@@ -12,8 +12,9 @@ import {
 } from "../model/graph";
 import type { Issue, SectionDescriptor, Spec, Value } from "../model/types";
 import { DiagramView } from "./DiagramView";
+import { PreviewView } from "./PreviewView";
 
-type Tab = "form" | "text" | "diagram";
+type Tab = "form" | "text" | "diagram" | "preview";
 
 const NEW_TEMPLATE = `[mesh]
 x_min = 0 0 0
@@ -283,6 +284,12 @@ export function ParEditor({
           >
             Diagram
           </button>
+          <button
+            className={tab === "preview" ? "on" : ""}
+            onClick={() => switchTab("preview")}
+          >
+            Preview
+          </button>
         </div>
         <span className="status">{status}</span>
       </div>
@@ -348,6 +355,17 @@ export function ParEditor({
         <div className="columns">
           <div className="diagrampane">
             <DiagramView spec={spec} ops={diagramOps} />
+          </div>
+          <div className="side">
+            <IssuesPanel issues={issues} />
+          </div>
+        </div>
+      )}
+
+      {spec && tab === "preview" && (
+        <div className="columns">
+          <div className="diagrampane">
+            <PreviewView spec={spec} />
           </div>
           <div className="side">
             <IssuesPanel issues={issues} />

@@ -148,3 +148,13 @@ input, select {
   padding: 10px 14px; box-shadow: 0 6px 24px rgba(0,0,0,.35);
 }
 .coupling-dialog input { width: 120px; }
+
+/* ---- preview ---- */
+.previewpane { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.preview-controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.preview-controls label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.preview-canvas { border: 1px solid var(--border); background: #000; image-rendering: pixelated; max-width: 100%; }
+.preview-readout { font-size: 12px; opacity: 0.8; }
+.preview-issues { margin: 0; padding-left: 18px; font-size: 12px; }
+.preview-issues li.error { color: var(--error); }
+.preview-issues li.warning { color: var(--accent); }

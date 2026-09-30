@@ -35,3 +35,17 @@ export interface FsEntry {
   name: string;
   type: "file" | "dir";
 }
+
+/** IC slice preview result (server ic_eval). */
+export interface IcPreview {
+  axis: number;
+  index: number;
+  coord: number;
+  u: { axis: number; name: string; min: number; max: number; n: number };
+  v: { axis: number; name: string; min: number; max: number; n: number };
+  fields: Record<
+    string,
+    { data: number[][]; min: number | null; max: number | null }
+  >;
+  issues: Issue[];
+}

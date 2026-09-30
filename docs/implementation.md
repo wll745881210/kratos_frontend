@@ -9,7 +9,7 @@
 | **M0** | 描述符目录 + `make bindings` + Spec→par CLI | ✅ **完成** (2026-09-30) |
 | M0.5 | REST/CLI 骨架 (FastAPI) | ✅ **完成** (2026-09-30，即 M2.0，见下) |
 | **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | 🔨 切片 A–D 完成：expr 引擎（word ops）+ univ_hydro/mhd/mg/chem 包装 + registry + 容器装配；**Sod（L1(ρ)=1.3e-3）、Brio-Wu（native 逐位一致）、inflow、chem Sod（CPU）全部验证通过**（详见 §M1 进展记录） |
-| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0/M2.1/M2.2 完成（详案见 `docs/m2_plan.md`） |
+| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0–M2.3 完成（详案见 `docs/m2_plan.md`）；剩 M2.4 项目/打包 |
 | M3 | Track B 代码生成 | ⬜ 未开始 |
 | M4 | LLM/Agent 接口 | ⬜ 未开始 |
 
@@ -132,6 +132,38 @@ tests: vitest 31/31（graph 9 + DiagramView 4 + 旧 18）；tsc + vite build cle
 - 实测：构建产物含 reactflow；`/api/par/parse` 解析 `chem_sod_univ.par` 得到
   `module.flow(type=chem_hydro)`/`module.chem`/`coupling.chem(parasite=flow)`
   —— 即图渲染输入。jsdom 冒烟（ResizeObserver/DOMMatrixReadOnly mock）通过。
+
+## M2.3 交付物（IC/mesh Canvas2D 预览）
+
+```
+core/kratos_spec/expr.py             # C++ expr.h 的逐字节 Python 移植
+                                     # （33 个 op、同优先级、word ops、
+                                     #  IEEE 语义手工对齐，错误信息格式一致）
+core/kratos_spec/ic_eval.py          # 基网格 IC 求值：base + [ic.*] 分层 +
+                                     #  零填充 + 物种归一化 → 2D 切片 JSON
+                                     #  （max_dim 封顶，默认 384）
+web/server/kratos_server/app.py      # POST /api/preview/ic
+web/client/src/views/PreviewView.tsx # 第四页 Preview：field/法向轴/切片
+                                     # 滑块，防抖 400ms，Canvas2D 伪彩渲染
+                                     # （v 轴向上、非有限值灰色、min/max 读数）
+tests/golden/expr_vectors.json       # 88 条三端共享黄金向量（值+错误）
+tests/golden/expr_cpp_harness.cpp    # C++ 端 harness（TSV 驱动）
+tests/golden/check_cpp.py            # g++ 编译 + 88/88 逐条对比（非默认
+                                     # pytest，改语法后手动跑）
+tests/test_expr.py (89) + tests/test_ic_eval.py (11)
+```
+
+- **保真口径**：Python 端与 `usr_ext/universal/expr.h` 同一份语法定义；
+  黄金向量对 C++ harness **88/88 一致**（含 inf/nan/除零/溢出、
+  `-2^2=-4`、`1++2=3` 等边界）。改表达式语法 = 改 C++ grammar 注释 +
+  expr.py + 向量，三者同步。
+- Spec 中多 token par 值是**字符串列表**（如 `mask = x geq 0.5` →
+  `["x","geq","0.5"]`）；求值前用空格 join（镜像 C++ `get_expr_str`）。
+- 分层语义与 univ pgen 一致：`[ic.*]` 按字典序应用，后者覆盖前者；
+  region 只覆盖它设置的通道；物种通道 `x.<name>` 归一化到和为 1。
+- 实测：`sod_univ.par` 经 parse → preview 得到 rho 1.0|0.125、pre 1.0|0.1
+  的 Sod 初态；`chem_sod_univ.par` 物种通道可预览。
+- 测试：vitest 33/33（含 PreviewView 2 个 jsdom 冒烟）；pytest 164/164。
 
 ## M1 进展记录（usr_ext/universal，在 kratos 仓库内）
 

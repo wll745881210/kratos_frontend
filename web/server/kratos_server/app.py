@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from kratos_spec.descriptors import load_default
+from kratos_spec import ic_eval
 from kratos_spec.parfile import parse_par
 from kratos_spec.spec import Spec
 
@@ -86,6 +88,13 @@ class WriteRequest(BaseModel):
 
 class SetCwdRequest(BaseModel):
     dir: str
+
+
+class PreviewIcRequest(BaseModel):
+    spec: dict
+    axis: int = 2
+    index: Optional[int] = None
+    max_dim: int = 384
 
 
 # ----------------------------------------------------------------------
@@ -142,6 +151,14 @@ def create_app(allowed_roots: list[str] | None = None) -> FastAPI:
     @app.post("/api/spec/validate")
     def spec_validate(req: SpecRequest):
         return {"issues": _issue_dicts(_spec_from(req.spec))}
+
+    @app.post("/api/preview/ic")
+    def preview_ic(req: PreviewIcRequest):
+        # Evaluate the universal-pgen IC stack on a base-mesh slice
+        # (no kratos run; see kratos_spec.ic_eval for mirrored semantics).
+        spec = _spec_from(req.spec)
+        return ic_eval.eval_ic_slice(spec, axis=req.axis,
+                                     index=req.index, max_dim=req.max_dim)
 
     @app.get("/api/fs/read")
     def fs_read(path: str = Query(...)):

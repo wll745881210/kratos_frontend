@@ -107,5 +107,12 @@ par 侧事实：`[mesh]`（x_min/x_max/n_cell_global/n_cell_block）+ `[refine_r
    自动布局，持久化留到 M2.4 项目文件）；coupling 中指向不存在角色的引用画
    ghost 节点（红虚线，可删边修复）而非静默吞掉；前端图模型（graph.ts）的角色
    语义与 C++ `registry.h` 一致（裸 `[module]`/`[coupling]` 的 role 为空串且互相
-   配对）；`[ic.*]` 等区域不进块图（表单页编辑）；双击模块节点跳表单对应
-   section（type/order 等属性在表单页改）。
+    配对）；`[ic.*]` 等区域不进块图（表单页编辑）；双击模块节点跳表单对应
+    section（type/order 等属性在表单页改）。
+9. M2.3 预览为单页 Preview tab（field/法向轴/切片滑块）；表达式三端保真
+   （C++ grammar 注释 = 唯一语法真源；Python `expr.py` 逐字节移植；JS 端不
+   再单独移植，预览由 server 求值）；黄金向量 88 条放 `tests/golden/`
+   随仓库分发，C++ 对比需手动跑 `tests/golden/check_cpp.py`（依赖 g++ 与
+   kratos 树，不进默认 pytest）。Spec 中多 token par 值是字符串列表，
+   求值前 join（镜像 `get_expr_str`）。AMR block 估计图（§5 视角）未做，
+   仅基网格切片——挪入 M2.4 一并评估。

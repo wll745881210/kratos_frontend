@@ -1,6 +1,6 @@
 /** Typed fetch client for the kratos_server REST API (v1). */
 
-import type { FsEntry, Issue, SectionDescriptor, Spec } from "../model/types";
+import type { FsEntry, IcPreview, Issue, SectionDescriptor, Spec } from "../model/types";
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, init);
@@ -66,4 +66,13 @@ export const api = {
 
   setCwd: (dir: string) =>
     post<{ roots: string[] }>("/api/app/set-cwd", { dir }),
+
+  /** Server-side IC evaluation: 2D base-mesh slice of primitive fields. */
+  previewIc: (spec: Spec, axis: number, index?: number, maxDim?: number) =>
+    post<IcPreview>("/api/preview/ic", {
+      spec,
+      axis,
+      ...(index !== undefined ? { index } : {}),
+      ...(maxDim !== undefined ? { max_dim: maxDim } : {}),
+    }),
 };
