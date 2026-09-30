@@ -8,7 +8,7 @@
 |---|---|---|
 | **M0** | 描述符目录 + `make bindings` + Spec→par CLI | ✅ **完成** (2026-09-30) |
 | M0.5 | REST/CLI 骨架 (FastAPI) | ✅ **完成** (2026-09-30，即 M2.0，见下) |
-| **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | 🔨 切片 A 完成：expr 引擎（word ops）+ univ_hydro + registry + sod_univ.par；**Sod 经典解验证通过**（CUDA/sm_86, L1(ρ)=1.3e-3，p\*/u\*/平台四位有效数字全对） |
+| **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | 🔨 切片 A–D 完成：expr 引擎（word ops）+ univ_hydro/mhd/mg/chem 包装 + registry + 容器装配；**Sod（L1(ρ)=1.3e-3）、Brio-Wu（native 逐位一致）、inflow、chem Sod（CPU）全部验证通过**（详见 §M1 进展记录） |
 | **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0/M2.1 完成（详案见 `docs/m2_plan.md`） |
 | M3 | Track B 代码生成 | ⬜ 未开始 |
 | M4 | LLM/Agent 接口 | ⬜ 未开始 |
@@ -186,6 +186,31 @@ cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
   网格需三维 ≥32³ 量级；kratos 布尔 par 值只认 0/1（`true` 解析为 0）；
   负路径（未知耦合角色/缺 type/重复 order）均干净报错。
 - 回归：Sod（容器路径 + legacy 回退路径）PASS，Brio-Wu 容器路径 PASS。
+
+### M1-D 进展记录（chem_hydro + chemistry）
+
+- 新增 `univ_chem.h`：`univ::chem_t`（chemistry 包装，role-aware）与
+  `univ::chem_hydro_t`（分层 IC 含 `x.<species>` 数分数字段）；`ic_t`
+  扩展物种通道（`[ic.*] x.H2 = ...`）；usr.cpp 注册 `chemistry` /
+  `chem_hydro`。
+- **验证通过**（CPU）：chem Sod（H2/H 被动标量、无反应网络、
+  `[chemistry] Tmin = 1e-30`）608 步到 t=0.2；组分相关 cv 精确一致
+  （左 e=2.4 / 右 e=0.16），物种数分数 0.9/0.1 随接触间断正确平流。
+- **chem 关键结论**：kratos chem 模块默认 Tmin=2.7 K 并对温度做
+  clamp + 能量重标定 → 无量纲单位制下必须显式
+  `[chemistry] Tmin = 1e-30`，否则 dt 塌缩（`docs/kratos_internals.md`
+  §6）。
+- **两个"疑似 trunk bug"最终均为误读**：(1) `p_dt` 其实在
+  `cycle::evolve()` 开头初始化（cycle.cpp:149-152），不在 `init()`；
+  (2) "设备数组全零"是 probe par 缺 `[init]` + 调试器读数误加 ghost
+  偏移（`u` 本就无 ghost）。教训已写入 `docs/kratos_internals.md` §10。
+- **发现的真正 trunk 隐患（仅记录，未改动）**：`copy_input` 的
+  `cp[tgt]` 反射拷贝链在 hydro-only 源 → mhd 派生目标时
+  `x_el/y_el/z_el` 与 `rot_bc` 不对齐（纯 hydro 路径不读这些字段，
+  实际无害）。
+- trunk 纪律：除 `usr_ext/universal/`（本项目新增）与用户自己的 mhd
+  工作外保持干净；调试期临时 print 已全部回退；今后 trunk 改动一律
+  先征求用户同意（DEVELOPMENT.md §5）。
 
 ## 使用
 
