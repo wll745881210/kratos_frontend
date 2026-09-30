@@ -78,6 +78,10 @@ tests/test_server.py   # 9 个 API 测试（httpx TestClient）
   已 gitignore；core 本体仍只依赖 pyyaml。
 - 修复一个 M0 潜伏 bug：`Spec.to_par` 现在保留空 section（`[device]`
   只含注释的 section 原先在 emit 时丢失）。
+- 白名单根目录默认 = server 启动 cwd + `~/scratch/tst_kratos_frontend`，
+  可用环境变量 `KRATOS_FRONT_ROOTS`（os.pathsep 分隔）追加；越界 → 403。
+- 启动：`.venv/bin/kratos-front serve [--host 127.0.0.1] [--port 8620]`。
+- 验收（m2_plan §6）：61/61 pytest；curl 实测 parse/emit/list/403 全通。
 
 ## M2.1 交付物（单 par 表单编辑器）
 
@@ -128,10 +132,26 @@ hydro）、`usr.cpp`、`pars/sod_univ.par`（经典 Sod，ρ_R=0.125）。
 **性能基准（M1 验收 <1%）**：同一 Sod（512×2×1, t_lim=2, CUDA/sm_86, GPU1）
 各跑 4 次——native `std_tst/sod` 7.15–7.38e6 cell/s，universal 7.13–7.39e6
 cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
-- 白名单根目录默认 = server 启动 cwd + `~/scratch/tst_kratos_frontend`，
-  可用环境变量 `KRATOS_FRONT_ROOTS`（os.pathsep 分隔）追加；越界 → 403。
-- 启动：`.venv/bin/kratos-front serve [--host 127.0.0.1] [--port 8620]`。
-- 验收（m2_plan §6）：61/61 pytest；curl 实测 parse/emit/list/403 全通。
+
+**切片 B（mhd + 表达式流入边界）已交付**：
+- `univ_mhd.h`：`univ::mhd_t`，par 选择 riemann/reconstruct/integrator
+  （当前 src 只有 hlld/plm/rk2，选了别的会报错并列出可用组合）；IC 为
+  分层 `[ic.*]` 区域（mask + rho/pre/vel_x..z/b_x..z 表达式，逐 region
+  覆盖），bf 按面网格写、cc 能量加 |b|²/2，与 `mhd_st` 相同的 clamped-cc
+  采样保证离散 divB=0。
+- `univ_inflow.h`：`expr_inflow_t`（phys functor，kind 名 `inf`），
+  `[bc.expr_inflow]` 中 rho/pre/vel_x/vel_y/vel_z 表达式，变量含
+  `{x,y,z,t}`；未设置的分量退化为零梯度。`keeper_inflow_t` 每步
+  `act_bnd` 前从 `mesh.p_cyc->t` 盖时间戳；`univ::hydro_t` 新增
+  `enroll_keeper()` 钩子，`hydro_inflow_t` 以此在 `enroll<>()` 之前
+  替换 keeper（usr.cpp 中 "hydro" 现在注册为 hydro_inflow_t）。
+- 验证：Brio-Wu（512×2×2, t=0.1）与 native `mhd_st` 逐 cell 一致
+  （hydro_cons max|Δ|=4.4e-7、field_bf 3.3e-7，同为 557 cycles、
+  dt0=1.903795e-04，roundoff 级）；常值超声速流入测试（rho=2 注入
+  v=1 流动气体，t=0.3 接触面应在 x=0.3）实测 front=0.287、两侧状态
+  精确（PASS）；Sod 回归 PASS（L1 不变）。
+- 教训：`device::base_t::free(p)` 默认 `host=true`（host 释放），设备
+  指针必须显式 `free_device(p)`，否则 finalize 时 CUDA invalid argument。
 
 ## 使用
 
