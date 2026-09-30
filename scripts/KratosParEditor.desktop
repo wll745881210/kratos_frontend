@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Kratos par Editor
+Comment=Edit kratos parameter files in the kratos frontend
+Exec=@WRAPPER@ %f
+Terminal=false
+NoDisplay=true
+MimeType=application/x-par;
+Categories=Development;Science;

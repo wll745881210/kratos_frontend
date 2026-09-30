@@ -10,6 +10,8 @@ Endpoints (v1, all under ``/api``):
     GET  /api/fs/read?path=                     -> {path, text}
     POST /api/fs/write        {path, text}      -> {path, bytes}
     GET  /api/fs/list?dir=                      -> {dir, entries}
+    GET  /api/app/cwd                           -> {cwd, roots}
+    POST /api/app/set-cwd     {dir}             -> {roots}  (whitelist += dir)
 
 If ``web/client/dist`` exists it is served at ``/`` (single-command
 deployment); during development the Vite dev server proxies ``/api``.
@@ -17,6 +19,8 @@ deployment); during development the Vite dev server proxies ``/api``.
 Localhost-only, no auth: this is a personal tool.  File-system access is
 restricted to whitelisted roots (cwd at startup, the scratch test dir,
 and any extra roots in ``KRATOS_FRONT_ROOTS`` (os.pathsep-separated)).
+``set-cwd`` extends the whitelist at runtime — it is an accident-guard,
+not a security boundary.
 """
 
 from __future__ import annotations
@@ -78,6 +82,10 @@ class SpecRequest(BaseModel):
 class WriteRequest(BaseModel):
     path: str
     text: str
+
+
+class SetCwdRequest(BaseModel):
+    dir: str
 
 
 # ----------------------------------------------------------------------
@@ -161,6 +169,24 @@ def create_app(allowed_roots: list[str] | None = None) -> FastAPI:
                    for n in sorted(os.listdir(p))]
         entries.sort(key=lambda e: (e["type"] != "dir", e["name"]))
         return {"dir": p, "entries": entries}
+
+    @app.get("/api/app/cwd")
+    def app_cwd():
+        return {"cwd": os.getcwd(), "roots": list(roots)}
+
+    @app.post("/api/app/set-cwd")
+    def app_set_cwd(req: SetCwdRequest):
+        """Whitelist ``dir`` (runtime only) so /api/fs can reach it.
+
+        Used by `kratos-front open` and by the client's ?file= fallback
+        when the target lives outside the startup roots.
+        """
+        p = os.path.realpath(os.path.expanduser(req.dir))
+        if not os.path.isdir(p):
+            raise HTTPException(404, f"not a directory: {req.dir!r}")
+        if p not in roots:
+            roots.append(p)
+        return {"roots": list(roots)}
 
     # built client, if present (registered last: catch-all mount)
     dist = os.path.normpath(os.path.join(

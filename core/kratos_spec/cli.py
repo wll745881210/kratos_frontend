@@ -8,6 +8,7 @@ validate   spec.json                 descriptor validation report
 diff       a.par b.par               key-identical comparison
 roundtrip  in.par                    par -> Spec -> par -> diff report
 serve      [--host H] [--port P]     REST server + web editor (M2)
+open       FILE.par                  open a par file in the web editor
 """
 
 from __future__ import annotations
@@ -102,6 +103,81 @@ def _cmd_serve(args) -> int:
     return 0
 
 
+def _http_json(url: str, payload: dict | None = None,
+               timeout: float = 2.0) -> dict:
+    """Tiny stdlib JSON client (keeps `open` free of httpx)."""
+    import json
+    import urllib.request
+
+    data = None if payload is None else json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url, data=data,
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _cmd_open(args) -> int:
+    """Open FILE.par in the web editor.
+
+    If no server answers on the port, spawn a detached one with
+    cwd = the file's directory (so the directory is whitelisted).
+    Either way, register the directory via /api/app/set-cwd and point
+    the browser at http://HOST:PORT/?file=ABS_PATH.
+    """
+    import os
+    import shutil
+    import subprocess
+    import time
+
+    path = os.path.realpath(os.path.expanduser(args.par))
+    if not os.path.isfile(path):
+        print(f"open: not a file: {args.par}", file=sys.stderr)
+        return 2
+    base = f"http://{args.host}:{args.port}"
+
+    def healthy() -> bool:
+        try:
+            _http_json(base + "/api/health", timeout=0.5)
+            return True
+        except Exception:
+            return False
+
+    if not healthy():
+        cmd = [sys.executable, "-c",
+               "import sys; from kratos_spec.cli import main;"
+               " sys.exit(main())",
+               "serve", "--host", args.host, "--port", str(args.port)]
+        subprocess.Popen(  # noqa: S603 (own interpreter, fixed argv)
+            cmd, cwd=os.path.dirname(path),
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True)
+        deadline = time.time() + 10.0
+        while time.time() < deadline and not healthy():
+            time.sleep(0.2)
+        if not healthy():
+            print(f"open: server did not come up on {base}",
+                  file=sys.stderr)
+            return 1
+
+    try:  # idempotent; needed when the server was started elsewhere
+        _http_json(base + "/api/app/set-cwd",
+                   {"dir": os.path.dirname(path)})
+    except Exception as exc:
+        print(f"open: set-cwd failed: {exc}", file=sys.stderr)
+        return 1
+
+    url = f"{base}/?file={path}"
+    print(url)
+    if not args.no_browser:
+        opener = shutil.which("xdg-open")
+        if opener:
+            subprocess.Popen([opener, url],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="kratos-front",
                                  description=__doc__)
@@ -136,6 +212,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8620)
     p.set_defaults(func=_cmd_serve)
+
+    p = sub.add_parser("open", help="open a par file in the web editor")
+    p.add_argument("par")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8620)
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(func=_cmd_open)
 
     args = ap.parse_args(argv)
     return args.func(args)

@@ -97,3 +97,9 @@ par 侧事实：`[mesh]`（x_min/x_max/n_cell_global/n_cell_block）+ `[refine_r
 2. IC/网格预览由 server 端 Python 求值（无需 GPU、无需跑 kratos）；精确结构以 .bin 为准。
 3. `make bindings` 仍推迟：M2 由 `/api/descriptors` 运行时下发等价信息。
 4. 运行器（spawn kratos）列为 M2.4 可选项，不阻塞主线。
+5. `GET /api/fs/list?dir=` 用 query-param（偏离最初 POST 草案）；fs 白名单默认根 =
+   server 启动 cwd + `~/scratch/tst_kratos_frontend` + `KRATOS_FRONT_ROOTS`。
+6. 文件关联：`kratos-front open FILE.par` + `?file=` 深链 + `POST /api/app/set-cwd`
+   运行时白名单扩展；`scripts/install.sh` 注册 `application/x-par` 与
+   KratosParEditor.desktop（per-user，无需 sudo）。白名单定位为防误触，非安全边界。
+7. M2.1 前端样式为手写 CSS（不引框架）；文本页用 CodeMirror 6。

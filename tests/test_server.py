@@ -121,3 +121,41 @@ def test_fs_outside_roots_forbidden(client):
                    params={"path": os.path.join(CORPUS, "..", "..",
                                                 "pyproject.toml")})
     assert r.status_code == 403  # '..' escape must not slip through
+
+
+def test_set_cwd_extends_whitelist(client, tmp_path):
+    outside = tmp_path.parent / f"{tmp_path.name}_outside"
+    outside.mkdir()
+    target = outside / "y.par"
+    target.write_text("[cycle]\n")
+    try:
+        r = client.get("/api/fs/read", params={"path": str(target)})
+        assert r.status_code == 403
+
+        r = client.post("/api/app/set-cwd", json={"dir": str(outside)})
+        assert r.status_code == 200
+        assert str(outside) in r.json()["roots"]
+
+        r = client.get("/api/fs/read", params={"path": str(target)})
+        assert r.status_code == 200
+        assert r.json()["text"] == "[cycle]\n"
+
+        # idempotent
+        r = client.post("/api/app/set-cwd", json={"dir": str(outside)})
+        assert r.json()["roots"].count(str(outside)) == 1
+    finally:
+        target.unlink()
+        outside.rmdir()
+
+
+def test_set_cwd_rejects_nonexistent(client):
+    r = client.post("/api/app/set-cwd",
+                    json={"dir": "/nonexistent-dir-xyz"})
+    assert r.status_code == 404
+
+
+def test_app_cwd_reports_roots(client):
+    r = client.get("/api/app/cwd")
+    assert r.status_code == 200
+    assert os.path.isdir(r.json()["cwd"])
+    assert isinstance(r.json()["roots"], list)
