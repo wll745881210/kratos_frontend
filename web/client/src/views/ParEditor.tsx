@@ -4,7 +4,16 @@ import { FileBrowser } from "../components/FileBrowser";
 import { IssuesPanel } from "../components/IssuesPanel";
 import { SectionCard } from "../components/SectionCard";
 import { TextEditor } from "../components/TextEditor";
+import {
+  addCoupling,
+  addModule,
+  removeCoupling,
+  removeModule,
+} from "../model/graph";
 import type { Issue, SectionDescriptor, Spec, Value } from "../model/types";
+import { DiagramView } from "./DiagramView";
+
+type Tab = "form" | "text" | "diagram";
 
 const NEW_TEMPLATE = `[mesh]
 x_min = 0 0 0
@@ -47,7 +56,7 @@ export function ParEditor({
   const [path, setPath] = useState<string | null>(null);
   const [spec, setSpec] = useState<Spec | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
-  const [tab, setTab] = useState<"form" | "text">("form");
+  const [tab, setTab] = useState<Tab>("form");
   const [text, setText] = useState("");
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState("");
@@ -133,10 +142,14 @@ export function ParEditor({
   };
 
   // ---- tab switching keeps both sides consistent -----------------------
-  const switchTab = async (next: "form" | "text") => {
+  const switchTab = async (next: Tab) => {
     if (next === tab || !spec) return;
     try {
-      if (next === "text") {
+      if (tab === "text" && next !== "text") {
+        const r = await api.parsePar(text);
+        setSpec(r.spec);
+        setIssues(r.issues);
+      } else if (next === "text") {
         const r = await api.emitPar(spec);
         if (r.text === null) {
           setStatus("cannot emit: fix validation errors first");
@@ -145,16 +158,45 @@ export function ParEditor({
         }
         setText(r.text);
         setIssues(r.issues);
-      } else {
-        const r = await api.parsePar(text);
-        setSpec(r.spec);
-        setIssues(r.issues);
       }
       setTab(next);
     } catch (e) {
       setStatus(String(e instanceof Error ? e.message : e));
     }
   };
+
+  // ---- diagram callbacks ------------------------------------------------
+  const jumpToSection = useCallback(
+    (section: string) => {
+      void switchTab("form").then(() =>
+        setTimeout(
+          () =>
+            document
+              .getElementById(`sec-${section}`)
+              ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+          50,
+        ),
+      );
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tab, spec, text],
+  );
+
+  const diagramOps = useMemo(
+    () => ({
+      onAddModule: (role: string, type: string) =>
+        mutate((s) => (addModule(s, role, type), s)),
+      onRemoveModule: (role: string) =>
+        mutate((s) => (removeModule(s, role), s)),
+      onAddCoupling: (fromRole: string, key: string, toRole: string) =>
+        mutate((s) => (addCoupling(s, fromRole, key, toRole), s)),
+      onRemoveCoupling: (fromRole: string, key: string, toRole?: string) =>
+        mutate((s) => (removeCoupling(s, fromRole, key, toRole), s)),
+      onJumpToSection: jumpToSection,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [jumpToSection],
+  );
 
   // ---- save -------------------------------------------------------------
   const save = async () => {
@@ -167,7 +209,7 @@ export function ParEditor({
     }
     try {
       let out = text;
-      if (tab === "form") {
+      if (tab !== "text") {
         const r = await api.emitPar(spec);
         if (r.text === null) {
           setIssues(r.issues);
@@ -235,6 +277,12 @@ export function ParEditor({
           >
             Text
           </button>
+          <button
+            className={tab === "diagram" ? "on" : ""}
+            onClick={() => switchTab("diagram")}
+          >
+            Diagram
+          </button>
         </div>
         <span className="status">{status}</span>
       </div>
@@ -289,6 +337,17 @@ export function ParEditor({
         <div className="columns">
           <div className="textpane">
             <TextEditor value={text} onChange={(t) => { setText(t); setDirty(true); }} />
+          </div>
+          <div className="side">
+            <IssuesPanel issues={issues} />
+          </div>
+        </div>
+      )}
+
+      {spec && tab === "diagram" && (
+        <div className="columns">
+          <div className="diagrampane">
+            <DiagramView spec={spec} ops={diagramOps} />
           </div>
           <div className="side">
             <IssuesPanel issues={issues} />

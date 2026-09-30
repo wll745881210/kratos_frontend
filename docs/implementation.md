@@ -9,7 +9,7 @@
 | **M0** | 描述符目录 + `make bindings` + Spec→par CLI | ✅ **完成** (2026-09-30) |
 | M0.5 | REST/CLI 骨架 (FastAPI) | ✅ **完成** (2026-09-30，即 M2.0，见下) |
 | **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | 🔨 切片 A–D 完成：expr 引擎（word ops）+ univ_hydro/mhd/mg/chem 包装 + registry + 容器装配；**Sod（L1(ρ)=1.3e-3）、Brio-Wu（native 逐位一致）、inflow、chem Sod（CPU）全部验证通过**（详见 §M1 进展记录） |
-| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0/M2.1 完成（详案见 `docs/m2_plan.md`） |
+| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0/M2.1/M2.2 完成（详案见 `docs/m2_plan.md`） |
 | M3 | Track B 代码生成 | ⬜ 未开始 |
 | M4 | LLM/Agent 接口 | ⬜ 未开始 |
 
@@ -108,6 +108,30 @@ tests: vitest 18/18（coerce 12 + SectionCard 6）；后端 pytest 64/64
   - `scripts/install.sh`：注册 `application/x-par` MIME + KratosParEditor.desktop
     + `~/.local/bin/kratos-front-open` wrapper（`--remove` 卸载）。
   - 新端点：`GET /api/app/cwd`、`POST /api/app/set-cwd`（运行时扩展白名单）。
+
+## M2.2 交付物（块图编辑器）
+
+```
+web/client/src/model/graph.ts        # Spec <-> 图模型 + 全部编辑变更（纯 TS）
+web/client/src/views/DiagramView.tsx # React Flow v11 画布：列式自动布局、
+                                     # 连线→coupling 对话框、删除节点/边、
+                                     # 双击节点跳表单对应 section
+ParEditor.tsx                        # 第三页 Diagram；form↔diagram 直通；
+                                     # 跳转 = 切 form + scrollIntoView
+tests: vitest 31/31（graph 9 + DiagramView 4 + 旧 18）；tsc + vite build clean
+```
+
+- 节点：`[module.<role>]`（含 `type`/`order`）+ core 固定节点
+  （device/unit/mesh/boundary/cycle，存在才画）；coupling 引用不存在角色时
+  画红色虚线 ghost 节点（不静默吞错）。
+- 边：`parasite` 虚线独占边（唯一目标）；其余键=命名 slot，值为角色列表。
+- 角色语义与 C++ `registry.h` 严格一致：裸 `[module]` → role `""`（与裸
+  `[coupling]` 配对）；前端改图只写回 Spec，服务端 parse/emit 仍为权威。
+- 布局为列式自动布局，**不持久化节点坐标**（留给 M2.4 项目文件）；`[ic.*]`
+  等区域节点不进图（在表单页编辑）。
+- 实测：构建产物含 reactflow；`/api/par/parse` 解析 `chem_sod_univ.par` 得到
+  `module.flow(type=chem_hydro)`/`module.chem`/`coupling.chem(parasite=flow)`
+  —— 即图渲染输入。jsdom 冒烟（ResizeObserver/DOMMatrixReadOnly mock）通过。
 
 ## M1 进展记录（usr_ext/universal，在 kratos 仓库内）
 

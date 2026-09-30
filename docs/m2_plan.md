@@ -103,3 +103,9 @@ par 侧事实：`[mesh]`（x_min/x_max/n_cell_global/n_cell_block）+ `[refine_r
    运行时白名单扩展；`scripts/install.sh` 注册 `application/x-par` 与
    KratosParEditor.desktop（per-user，无需 sudo）。白名单定位为防误触，非安全边界。
 7. M2.1 前端样式为手写 CSS（不引框架）；文本页用 CodeMirror 6。
+8. M2.2 块图用 React Flow **v11**（非 @xyflow v12）；节点坐标不持久化（列式
+   自动布局，持久化留到 M2.4 项目文件）；coupling 中指向不存在角色的引用画
+   ghost 节点（红虚线，可删边修复）而非静默吞掉；前端图模型（graph.ts）的角色
+   语义与 C++ `registry.h` 一致（裸 `[module]`/`[coupling]` 的 role 为空串且互相
+   配对）；`[ic.*]` 等区域不进块图（表单页编辑）；双击模块节点跳表单对应
+   section（type/order 等属性在表单页改）。
