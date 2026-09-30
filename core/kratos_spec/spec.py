@@ -70,6 +70,7 @@ class Spec:
         reg = registry or load_default()
         par = ParFile()
         for name in reg.emission_order(list(self.sections)):
+            par.sections.setdefault(name, {})  # keep empty sections
             for key, value in self.sections[name].items():
                 par.set(name, key, format_value(value))
         return par

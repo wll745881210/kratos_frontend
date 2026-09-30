@@ -7,9 +7,9 @@
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | **M0** | 描述符目录 + `make bindings` + Spec→par CLI | ✅ **完成** (2026-09-30) |
-| M0.5 | REST/CLI 骨架 (FastAPI) | ⬜ 未开始（fastapi 未安装，服务器需求后置） |
+| M0.5 | REST/CLI 骨架 (FastAPI) | ✅ **完成** (2026-09-30，即 M2.0，见下) |
 | **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | ⬜ 未开始 |
-| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | ⬜ 未开始（按计划与 M1 并行） |
+| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0 完成（详案见 `docs/m2_plan.md`） |
 | M3 | Track B 代码生成 | ⬜ 未开始 |
 | M4 | LLM/Agent 接口 | ⬜ 未开始 |
 
@@ -59,16 +59,40 @@ pyproject.toml      # 包 kratos-spec，脚本入口 kratos-front
 7. **浮点格式化**：`|x| >= 1e12` 或 `< 1e-4` 用裁尾科学计数法（`3.156e+13`），
    其余用 Python repr（恒含 `.` 或 `e`，浮点视觉上仍是浮点）。
 
+## M2.0 交付物（REST 骨架，= M0.5）
+
+```
+web/server/kratos_server/
+  __init__.py
+  app.py          # create_app(): /api/health, /api/descriptors,
+                  # /api/par/parse, /api/spec/emit, /api/spec/validate,
+                  # /api/fs/read|write|list（白名单根目录）
+                  # 静态托管 web/client/dist（存在时）；CORS 放行 Vite :5173
+core/kratos_spec/
+  cli.py          # 新增 `serve` 子命令（lazy import kratos_server）
+  descriptors.py  # Registry.all_descriptors()（供 /api/descriptors）
+tests/test_server.py   # 9 个 API 测试（httpx TestClient）
+```
+
+- 依赖隔离：仓库根 `.venv`（`uv venv` + `uv pip install -e '.[test,server]'`），
+  已 gitignore；core 本体仍只依赖 pyyaml。
+- 修复一个 M0 潜伏 bug：`Spec.to_par` 现在保留空 section（`[device]`
+  只含注释的 section 原先在 emit 时丢失）。
+- 白名单根目录默认 = server 启动 cwd + `~/scratch/tst_kratos_frontend`，
+  可用环境变量 `KRATOS_FRONT_ROOTS`（os.pathsep 分隔）追加；越界 → 403。
+- 启动：`.venv/bin/kratos-front serve [--host 127.0.0.1] [--port 8620]`。
+- 验收（m2_plan §6）：61/61 pytest；curl 实测 parse/emit/list/403 全通。
+
 ## 使用
 
 ```bash
 cd kratos_frontend
-python3 -m pytest tests/                 # 52 个测试
-export PYTHONPATH=core                   # 或 pip install -e .
-python3 -m kratos_spec.cli lift  runs/a.par -o spec.json
-python3 -m kratos_spec.cli validate spec.json
-python3 -m kratos_spec.cli emit  spec.json -o runs/a.regen.par
-python3 -m kratos_spec.cli diff  runs/a.par runs/a.regen.par   # IDENTICAL
+.venv/bin/python -m pytest                 # 61 个测试
+.venv/bin/kratos-front lift  runs/a.par -o spec.json
+.venv/bin/kratos-front validate spec.json
+.venv/bin/kratos-front emit  spec.json -o runs/a.regen.par
+.venv/bin/kratos-front diff  runs/a.par runs/a.regen.par   # IDENTICAL
+.venv/bin/kratos-front serve               # REST + 将来的 web 编辑器 @127.0.0.1:8620
 ```
 
 ## 下一步（M1 启动清单）

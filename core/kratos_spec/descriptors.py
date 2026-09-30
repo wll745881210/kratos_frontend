@@ -172,6 +172,11 @@ class Registry:
     def known_sections(self) -> list[str]:
         return sorted(self._exact)
 
+    def all_descriptors(self) -> list[Descriptor]:
+        """Every descriptor, exact first, sorted by (order, section)."""
+        return sorted([*self._exact.values(), *self._wild],
+                      key=lambda d: (d.order, d.section))
+
     def emission_order(self, names: list[str]) -> list[str]:
         """Sort section names: descriptor order first, unknowns last
         (stable, keeping input order among equal ranks)."""

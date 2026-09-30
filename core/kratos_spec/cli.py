@@ -7,6 +7,7 @@ emit       spec.json [-o out.par]    Spec -> par
 validate   spec.json                 descriptor validation report
 diff       a.par b.par               key-identical comparison
 roundtrip  in.par                    par -> Spec -> par -> diff report
+serve      [--host H] [--port P]     REST server + web editor (M2)
 """
 
 from __future__ import annotations
@@ -90,6 +91,17 @@ def _cmd_roundtrip(args) -> int:
     return 0 if not problems else 1
 
 
+def _cmd_serve(args) -> int:
+    try:
+        from kratos_server.app import run
+    except ImportError:
+        print("serve: server extras not installed; run "
+              "`pip install -e '.[server]'` first", file=sys.stderr)
+        return 2
+    run(host=args.host, port=args.port)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="kratos-front",
                                  description=__doc__)
@@ -119,6 +131,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("roundtrip", help="par -> Spec -> par -> diff")
     p.add_argument("par")
     p.set_defaults(func=_cmd_roundtrip)
+
+    p = sub.add_parser("serve", help="REST server + web editor")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8620)
+    p.set_defaults(func=_cmd_serve)
 
     args = ap.parse_args(argv)
     return args.func(args)
