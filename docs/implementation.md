@@ -153,6 +153,40 @@ cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
 - 教训：`device::base_t::free(p)` 默认 `host=true`（host 释放），设备
   指针必须显式 `free_device(p)`，否则 finalize 时 CUDA invalid argument。
 
+**切片 C（多实例角色 + 耦合 + 通用 proxy）已交付**：
+- `couplable.h`：`couplable_t` 接口（`couple_slots()` 默认空、
+  `couple(slot, idx, target)` 默认抛错并列出可用槽）。
+- `role_aware.h`：`role_aware_t`（`set_role(role, overrides)`）+
+  `scoped_args(args, overrides)`：把 `[module.<role>]` 内含 `.` 的键
+  （按最后一个点拆成 `<section>.<key>`）以 `input::set` 覆写到私有副本，
+  模块 `read` 只见覆写后的 args。
+- `univ_proxy.h`：`prx_unv_t` 内联静态槽 `p_dyn` / `p_che` /
+  `p_mg[4]` + `n_mg` + `d_dyn(reg)` / `d_mg(i,reg)` 访问器；容器按
+  `dynamic_cast` 自动接线（dynamics::base_t→p_dyn 单例，chemistry::base_t
+  →p_che 单例，multigrid::base_t→p_mg 数组）；多个 dynamics 报错。
+  这是将来生成版 `univ_proxy.gen.h` 的手写替身。
+- `univ_mg.h`：`univ::mg_t`（multigrid::base_t + couplable + role_aware）。
+- `registry.h` 重写为 `assemble_modules()`：`[module.<role>]` 必需 `type`，
+  可选 `order`（默认按 section 名字典序；显式 order 重复报错）；按
+  (order, 名字) 排序后以显式槽位 enroll（i_init=i_step=序号）；
+  `[coupling.<role>]`：`parasite = <role>`（单向，容器调用）+ 其余键为
+  命名槽（值=角色列表）；未知角色/未知类型/非 couplable 模块均报错并
+  列出可选项；启动时打印装配计划 `[univ] module[i] role=... type=...`。
+  无 `[module.*]` 时回退单 hydro（role 'dyn'，打印标注 legacy fallback）。
+- `univ_hydro.h`/`univ_mhd.h`：两模块均继承 couplable_t + role_aware_t，
+  `read` 先过 `scoped_args`。
+- `pars/mg2_hydro.par`：双 multigrid 实例 + hydro 冒烟测试（角色乱序命名
+  + 显式 order + mg_b 覆写 n_iter=2/print_info=1）。验证：装配顺序
+  0/1/2 正确；mg_a 见 (print_info=0, n_iter=1)，mg_b 见 (1, 2) ——
+  覆写隔离确认（用 stderr 探针验证后已移除探针）。
+- `pars/cmz_shape.par`：cmz usr.cpp 装配（mg_sta 0 / mg_dyn 1 / hydro 2 /
+  chem 3 parasite→hydro / sink 4 p_hyd→hydro）的纯容器语法表达（文档性
+  产物；cmz 专用类型未注册，暂不可运行）。
+- 教训：multigrid 的 V-cycle 粗化对退化轴（n_cell=1）SIGFPE，mg 测试
+  网格需三维 ≥32³ 量级；kratos 布尔 par 值只认 0/1（`true` 解析为 0）；
+  负路径（未知耦合角色/缺 type/重复 order）均干净报错。
+- 回归：Sod（容器路径 + legacy 回退路径）PASS，Brio-Wu 容器路径 PASS。
+
 ## 使用
 
 ```bash
