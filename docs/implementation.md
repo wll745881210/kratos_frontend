@@ -211,6 +211,13 @@ cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
 - trunk 纪律：除 `usr_ext/universal/`（本项目新增）与用户自己的 mhd
   工作外保持干净；调试期临时 print 已全部回退；今后 trunk 改动一律
   先征求用户同意（DEVELOPMENT.md §5）。
+- **CUDA 终验（pristine trunk, sm_86/GPU1）**：chem Sod 608 步到 t=0.2，
+  与 CPU 逐周期一致，内能 2.4/0.16、x_H2 0.9/0.1 精确；回归 Sod
+  （L1(ρ)=1.32e-3）、Brio-Wu、inflow（rho=2 精确，front x=0.299≈0.3）
+  全部通过。
+- M1 余项（计划内未完成）：IC 通道 1（binary base file）与通道 3
+  （perturbation layer）、6–8 个命名 IC primitive 库、`make bindings`
+  生成 univ_proxy.gen.h（现为手写的 univ_proxy.h 替身）。
 
 ## 使用
 
