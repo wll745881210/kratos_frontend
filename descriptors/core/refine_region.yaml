@@ -1,0 +1,12 @@
+section: refine_region*
+title: Static refinement region
+order: 25
+doc: |
+  Any section whose name contains refine_region (e.g. refine_region_00,
+  refine_region.stripe) declares one static (SMR) refinement region.
+  Mirrors meshgen.cpp::load_refinement.
+keys:
+  level: { type: int,   default: 0, doc: refinement level of the region }
+  x_min: { type: fvec3, doc: lower corner (code units) }
+  x_max: { type: fvec3, doc: upper corner (code units) }
+  loc:   { type: fvec3, doc: single-point form of x_min }

@@ -1,0 +1,32 @@
+# Descriptor format (documentation of record; the loader in
+# core/kratos_spec/descriptors.py enforces it).
+#
+# One YAML file per par section.  All generated artefacts (JSON Schema,
+# web block library, Spec->par key map, universal proxy header) derive
+# from these files — never edit generated outputs by hand.
+
+section: string        # required. Exact section name, or prefix wildcard
+                       # with a single trailing '*', e.g. "refine_region*"
+                       # matches refine_region_00, refine_region.stripe, ...
+title: string          # optional, for UI/docs
+order: int             # optional emission order, lower first (def. 1000)
+doc: string            # optional free text
+
+keys:                  # optional map, preserving declaration order
+  <key name>:
+    type: any | int | float | str | bool
+        | int[] | float[] | str[]        # whitespace-separated lists
+        | fvec3 | ivec3                  # fixed length-3 vectors
+        # default when omitted: str.  "any" keeps the inferred value
+        # uncoerced (for number-or-symbol values such as unit.density).
+    required: bool     # default false
+    default: value     # optional, for UI pre-fill and --fill-defaults
+    doc: string        # optional
+
+# Notes
+# * bool values are emitted as 0/1 (kratos reads them without boolalpha).
+# * Unknown keys in a described section are kept but warned about.
+# * Sections with no descriptor round-trip verbatim (raw passthrough).
+# * M1 extends this format with module metadata: coupling_slots,
+#   provides/consumes, instantiation matrix axes.  Keep M0 files free of
+#   those fields until then.

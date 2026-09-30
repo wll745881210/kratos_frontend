@@ -1,0 +1,38 @@
+[device]
+idx_device = 0
+
+[mesh]
+x_min         =   0   0   0
+x_max         =   1   1   1
+n_cell_global = 256   2   2
+n_cell_block  = 256   2   2
+
+[boundary]
+kinds = per per per per per per
+
+[cycle]
+prefix_output  = mhd_lw_alf
+n_cycle_lim    = 100000000
+n_display_freq = 100
+t_lim          = 1
+dt_output      = 5e-1
+t_output_next  = 0
+final_output   = 1
+except_ferr    = 1
+
+[dynamics]
+gamma         = 1.66667
+cfl           = 0.4
+thread_limit  = 256
+
+[init]
+rho0 = 1
+pre0 = 0.6
+vel0 = 0
+b0   = 1 0 0
+
+[prob]
+wave_mode = 2
+ax        = 0
+A         = 1e-4
+lambda    = 1

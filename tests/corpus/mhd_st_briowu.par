@@ -1,0 +1,44 @@
+[device]
+idx_device = 0
+
+[mesh]
+x_min         =   0   0   0
+x_max         =   1   1   1
+n_cell_global = 512   2   2
+n_cell_block  = 512   2   2
+
+[boundary]
+kinds = out out per per per per
+
+[cycle]
+prefix_output  = mhd_st
+n_cycle_lim    = 100000000
+n_display_freq = 1000
+t_lim          = 0.1
+dt_output      = 1e10
+t_output_next  = 0
+final_output   = 1
+except_ferr    = 1
+
+[dynamics]
+gamma         = 2
+cfl           = 0.4
+thread_limit  = 256
+
+[init]
+rho0 = 1
+pre0 = 1
+vel0 = 0
+b0   = 0 0 0
+
+[prob]
+ax    = 0
+x0    = 0.5
+rho_l = 1
+p_l   = 1
+vel_l = 0 0 0
+b_l   = 1 1 0
+rho_r = 0.125
+p_r   = 0.1
+vel_r = 0 0 0
+b_r   = 1 -1 0

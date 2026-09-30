@@ -1,0 +1,18 @@
+section: init
+title: Uniform initial condition (built-in channel)
+order: 55
+doc: |
+  kratos' built-in uniform IC channel.  std_tst style uses
+  rho0/pre0/vel0/b0 (code units); chem_hydro/chem_mhd read_chem() uses
+  rho0_cgs/T0/vel0_cgs (physical units, converted via [unit]).
+keys:
+  rho0:     { type: float, doc: uniform density (code units) }
+  pre0:     { type: float, doc: uniform pressure (code units) }
+  vel0:     { type: "float[]",
+              doc: uniform velocity (code units); scalar broadcasts }
+  b0:       { type: "float[]",
+              doc: uniform magnetic field (code units); scalar broadcasts }
+  rho0_cgs: { type: float, doc: uniform density (g/cm^3) }
+  T0:       { type: float, doc: uniform temperature (K) }
+  vel0_cgs: { type: "float[]",
+              doc: uniform velocity (cm/s); scalar broadcasts }

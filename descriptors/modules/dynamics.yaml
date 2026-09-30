@@ -1,0 +1,10 @@
+section: dynamics
+title: Fluid/MHD dynamics
+order: 40
+keys:
+  gamma:            { type: float, doc: adiabatic index }
+  cfl:              { type: float, doc: CFL number }
+  thread_limit:     { type: int,   doc: GPU threads per block }
+  bnd_thread_limit: { type: int,   doc: threads for boundary kernels }
+  rho_floor:        { type: float, doc: density floor }
+  tmp_floor:        { type: float, doc: temperature floor }

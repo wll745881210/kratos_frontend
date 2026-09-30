@@ -1,0 +1,11 @@
+section: unit
+title: Code units
+order: 10
+doc: |
+  Code-unit anchoring in CGS. Quantities suffixed _cgs elsewhere are
+  physical; everything else is in code units set here.
+keys:
+  length:  { type: float, required: true, doc: cm per code length unit }
+  time:    { type: float, required: true, doc: s per code time unit }
+  density: { type: any,   required: true,
+             doc: g/cm^3 per code density unit, or a symbol such as "mp" }

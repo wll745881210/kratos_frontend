@@ -1,0 +1,16 @@
+section: multigrid
+title: Multigrid solver (gravity/diffusion)
+order: 45
+doc: Keys mirror multigrid.cpp::read; defaults shown are the code defaults.
+keys:
+  thread_limit:   { type: int,   default: 32 }
+  n_iter:         { type: int,   default: 1 }
+  n_smooth:       { type: int,   default: 1 }
+  dtol:           { type: float, doc: defect tolerance (defect_lim) }
+  cycle_calc_ave: { type: int,   default: 1 }
+  cycle_per_deep: { type: int,   default: 1 }
+  dl_scratch:     { type: int,   default: 1 }
+  iter_first:     { type: int,   default: 20 }
+  is_test:        { type: bool,  default: false }
+  print_info:     { type: bool,  default: true }
+  phy_bnd_type:   { type: str,   default: free }

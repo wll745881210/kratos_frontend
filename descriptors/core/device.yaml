@@ -1,0 +1,6 @@
+section: device
+title: Compute device
+order: 5
+doc: Device selection; optional (defaults to device 0).
+keys:
+  idx_device:   { type: int,  doc: GPU/device index }

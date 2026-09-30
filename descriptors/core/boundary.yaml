@@ -1,0 +1,13 @@
+section: boundary
+title: Boundary conditions
+order: 30
+doc: |
+  Six faces (x-, x+, y-, y+, z-, z+).  Known kinds are registered by the
+  module boundary keepers: per (periodic, substring-matched), out, fre,
+  ref; pol only on theta faces.  The universal pgen additionally
+  registers expr_inflow (expression-driven inflow).
+keys:
+  kinds:
+    type: "str[]"
+    required: true
+    doc: six face kinds, e.g. "per per per per out out"

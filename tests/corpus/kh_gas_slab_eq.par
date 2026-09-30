@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# kh_gas: self-gravitating slab on the thermal equilibrium
+# curve (i_he = 2), with separate cooling (table) and
+# heating (heat0_cgs).  All quantities with a _cgs suffix
+# (or documented as physical) are in CGS; everything else
+# is in code units set by [unit].
+#
+# gravity note: grav_conv = 0 (or any value >= 0) means
+# "use 4 pi G in code units" AND enables the multigrid
+# solver;  a NEGATIVE value disables self-gravity entirely.
+# ------------------------------------------------------------
+
+[unit]
+length  = 3.086e18        # 1 pc in cm
+time    = 3.156e13        # 1 Myr in s (vel0 = 0.978 km/s)
+density = mp              # rho0 = proton mass
+
+[mesh]
+x_min         = -1.0  -0.25  -4.0
+x_max         =  1.0   0.25   4.0
+n_cell_global =  256   64     512
+
+[boundary]
+kinds = per  per  per  per  out  out
+
+[dynamics]
+gamma = 1.6666667
+cfl   = 0.3
+
+[cycle]
+t_0           = 0.0
+t_lim         = 20.0      # 20 Myr
+dt_init       = 1e-4
+dt_expand     = 1.05
+n_cycle_lim   = 10000000
+dt_output     = 0.2       # every 0.2 Myr
+t_output_next = 0.0
+final_output  = 1
+prefix_output = slab_eq
+n_display_freq   = 100
+t_display_prec   = 4
+
+[prob]
+i_ic      = 0             # 0 = slab, 1 = cylinder, 2 = uniform
+i_he      = 2             # 2 = equilibrium-curve slab
+mu_amu    = 2.4
+rho0_amu  = 1.0e2         # midplane density (amu cm^-3)
+rhoa_amu  = 1.0           # ambient density
+T0        = 50.0          # anchor branch point (K); the eq
+                          # curve snaps it to T_eq(rho0)
+z0        = 0.0           # slab center
+l_trans   = 0.02          # shear/transition width (code, pc)
+v0_cgs    = 0.0  0.0  2.0e4   # shear amplitude (cm/s)
+pert_amp  = 0.05
+n_pert    = 32
+seed      = 42
+relax     = 0             # 1 = relaxation run (static)
+grav_conv = 0             # 0 => 4 pi G (code units); <0 => off
+
+[cooling]
+file       =              # REQUIRED: cooling table
+                         # (3 cols: log10 T, log10 Lam0,
+                         #  log10 Lam1)
+z          = 1.0          # metallicity (solar units)
+heat0_cgs  = 2.0e-26      # heating per H nucleus (erg/s)
+sig_esc    = 1.0e-22      # escape-prob cross section (cm2)
+lmin_cgs   = 1.0e19       # min photon escape length (cm)
+Tmax       = 1.0e12
+Tmin       = 1.0e-1
+n_iter_cool = 100
+
+[multigrid]
+n_iter      = 100
+n_smooth    = 10
+dtol        = 1e-6
+print_info  = 0

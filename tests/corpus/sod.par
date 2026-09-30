@@ -1,0 +1,32 @@
+[device]
+# idx_device = 0
+
+[mesh]
+x_min         =   0   -1   -1
+x_max         =   1    1    1
+n_cell_global = 512   2    1
+# n_cell_block  =  64    1    1
+
+[boundary]
+kinds = fre fre fre fre fre fre
+
+[cycle]
+prefix_output  = sod_6
+n_cycle_lim    = 100000000
+n_display_freq = 100
+t_lim          = 2
+dt_output      = 1e0
+t_output_next  = 1e0
+final_output   = 1
+
+[dynamics]
+gamma         = 1.4
+thread_limit  = 256
+
+[prob]
+rho =  1.4 1.0 
+pre =  1.0 1.0 
+vel =  0.0 0.0
+x0  = 0.5
+
+ 

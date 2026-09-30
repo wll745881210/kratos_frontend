@@ -1,0 +1,28 @@
+[device]
+# idx_device = 1
+
+[mesh]
+x_min         =  0    0   0 
+x_max         = 0.3 0.3 0.3
+n_cell_global = 1024 1024 1
+# n_cell_block  = 128 128 2
+# n_cell_global = 1024 1024 2
+
+[boundary]
+kinds = ref ref ref ref ref ref
+
+[cycle]
+prefix_output  = lw
+n_cycle_lim    = 100000000
+n_display_freq = 100
+t_lim          = 2.5
+dt_output      = 4.5e-2
+t_output_next  = 4.5e-2
+final_output   = 1
+
+[dynamics]
+gamma         = 1.4
+thread_limit  = 64
+
+[prob]
+# Use default values

@@ -1,0 +1,17 @@
+section: cycle
+title: Time cycle and output
+order: 60
+keys:
+  t_0:            { type: float, doc: initial time }
+  t_lim:          { type: float, doc: stop time }
+  dt_init:        { type: float, doc: initial timestep }
+  dt_expand:      { type: float, doc: max dt growth factor per cycle }
+  n_cycle_lim:    { type: int,   doc: max number of cycles }
+  dt_output:      { type: float, doc: time interval between outputs }
+  t_output:       { type: float, doc: first/next output time }
+  t_output_next:  { type: float, doc: next output time }
+  final_output:   { type: bool,  doc: write output at t_lim }
+  except_ferr:    { type: bool,  doc: raise on floating-point errors }
+  prefix_output:  { type: str,   doc: output file prefix }
+  n_display_freq: { type: int,   doc: cycles between console displays }
+  t_display_prec: { type: int,   doc: time display precision (digits) }
