@@ -8,7 +8,7 @@
 |---|---|---|
 | **M0** | 描述符目录 + `make bindings` + Spec→par CLI | ✅ **完成** (2026-09-30) |
 | M0.5 | REST/CLI 骨架 (FastAPI) | ✅ **完成** (2026-09-30，即 M2.0，见下) |
-| **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | 🔨 切片 A 已建（expr 引擎 + univ_hydro + registry + sod_univ.par，CUDA 构建通过；Sod 数值验证待跑） |
+| **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | 🔨 切片 A 完成：expr 引擎（word ops）+ univ_hydro + registry + sod_univ.par；**Sod 经典解验证通过**（CUDA/sm_86, L1(ρ)=1.3e-3，p\*/u\*/平台四位有效数字全对） |
 | **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0/M2.1 完成（详案见 `docs/m2_plan.md`） |
 | M3 | Track B 代码生成 | ⬜ 未开始 |
 | M4 | LLM/Agent 接口 | ⬜ 未开始 |
@@ -104,6 +104,30 @@ tests: vitest 18/18（coerce 12 + SectionCard 6）；后端 pytest 64/64
   - `scripts/install.sh`：注册 `application/x-par` MIME + KratosParEditor.desktop
     + `~/.local/bin/kratos-front-open` wrapper（`--remove` 卸载）。
   - 新端点：`GET /api/app/cwd`、`POST /api/app/set-cwd`（运行时扩展白名单）。
+
+## M1 进展记录（usr_ext/universal，在 kratos 仓库内）
+
+切片 A 交付：`expr.h`（表达式→字节码，host/device 双端 eval，word 运算符
+`geq/leq/neq/eq/ne/lt/gt/ge/le/and/or/not`）、`univ_hydro.h`（`ic_t` 分层 IC +
+`univ::hydro_t`，按 par 字符串选 riemann/reconstruct/integrator）、
+`registry.h`（`[module.*]` section → 模块注册表，无 module section 时回退单
+hydro）、`usr.cpp`、`pars/sod_univ.par`（经典 Sod，ρ_R=0.125）。
+
+**par 表达式的两条硬约束**（kratos `src/io/args/input.cpp` 行为，前端 grammar
+与校验必须复刻）：
+1. 值在第二个 `=` 处截断 → 表达式禁止出现 `=`（`>=`/`==` 用 word 运算符替代）。
+2. `get<std::string>` 只取首个空白 token → C++ 端必须 `get<vector<string>>`
+   后重连（`univ_hydro.h` 的 `get_expr_str` 已如此）；Python `parfile.py` 镜像
+   item_map 存全串，两端语义一致由 `ic_t` 重连保证。
+
+**Sod 调试教训**：模拟一直是物理自洽的；最终根因是验证脚本本身——
+`u* = 0.5*(f_L + f_R)`（实为残差≈0）应为 `0.5*(f_R - f_L)`，且 canonical
+表值对应 ρ_R=0.125 而非 0.1。验证脚本现内建 canonical 自检
+（`assert |p*-0.30313|<1e-4`），位于 `~/scratch/tst_kratos_frontend/sod_univ/verify_sod.py`。
+
+**性能基准（M1 验收 <1%）**：同一 Sod（512×2×1, t_lim=2, CUDA/sm_86, GPU1）
+各跑 4 次——native `std_tst/sod` 7.15–7.38e6 cell/s，universal 7.13–7.39e6
+cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
 - 白名单根目录默认 = server 启动 cwd + `~/scratch/tst_kratos_frontend`，
   可用环境变量 `KRATOS_FRONT_ROOTS`（os.pathsep 分隔）追加；越界 → 403。
 - 启动：`.venv/bin/kratos-front serve [--host 127.0.0.1] [--port 8620]`。
