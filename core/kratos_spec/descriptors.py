@@ -45,6 +45,9 @@ class KeySpec:
     required: bool = False
     default: object = None
     doc: str = ""
+    # regulations §2.2: deprecated keys are kept (never silently removed)
+    # and surface a validation warning instead of an error.
+    deprecated: bool = False
 
 
 @dataclass
@@ -139,7 +142,8 @@ def _load_one(path: str) -> Descriptor:
         keys[name] = KeySpec(name=name, type=t,
                              required=bool(spec.get("required", False)),
                              default=spec.get("default"),
-                             doc=spec.get("doc", ""))
+                             doc=spec.get("doc", ""),
+                             deprecated=bool(spec.get("deprecated", False)))
     return Descriptor(section=section, title=raw.get("title", ""),
                       order=int(raw.get("order", 1000)),
                       doc=raw.get("doc", ""), keys=keys, source=path)

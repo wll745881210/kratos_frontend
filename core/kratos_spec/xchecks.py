@@ -146,6 +146,53 @@ def _check_unit(spec) -> list[Issue]:
     return issues
 
 
+
+
+def _check_refine(spec) -> list[Issue]:
+    """refine_region_* bounds/level checks (regulations section 3.3).
+
+    Mirrors meshgen.cpp: a region whose loc/x_min/x_max falls outside
+    [mesh.x_min, mesh.x_max] on a live axis makes kratos throw
+    "Incorrect SMR region"; level <= 0 regions are silently ignored.
+    """
+    issues: list[Issue] = []
+    mesh = spec.sections.get("mesh")
+    if not isinstance(mesh, dict):
+        return issues
+    x_min = _as_vec(mesh.get("x_min"))
+    x_max = _as_vec(mesh.get("x_max"))
+    n_glob = _as_vec(mesh.get("n_cell_global"))
+    if not (x_min and x_max and n_glob):
+        return issues
+    n_dim = 0
+    for a in range(3):
+        if isinstance(n_glob[a], (int, float)) and n_glob[a] > 1:
+            n_dim = a + 1
+    for name, kv in spec.sections.items():
+        if not (isinstance(kv, dict) and name.startswith("refine_region")):
+            continue
+        level = kv.get("level", 0)
+        if isinstance(level, (int, float)) and level <= 0:
+            issues.append(Issue(
+                "warning", f"{name}.level",
+                f"{name}: level <= 0 -> region silently ignored by kratos"))
+        for key in ("loc", "x_min", "x_max"):
+            v = _as_vec(kv.get(key))
+            if v is None:
+                continue
+            for a in range(n_dim):
+                if not isinstance(v[a], (int, float)):
+                    continue
+                if v[a] < x_min[a] or v[a] > x_max[a]:
+                    issues.append(Issue(
+                        "error", f"{name}.{key}",
+                        f"{name}.{key}[{a}]={v[a]} outside domain "
+                        f"[{x_min[a]}, {x_max[a]}] (kratos throws "
+                        f"'Incorrect SMR region')"))
+    return issues
+
+
 def cross_validate(spec) -> list[Issue]:
     """Cross-field checks; appended to Spec.validate()."""
-    return _check_mesh(spec) + _check_unit(spec)
+    return (_check_mesh(spec) + _check_unit(spec)
+            + _check_refine(spec))

@@ -20,6 +20,7 @@ keys:                  # optional map, preserving declaration order
         # default when omitted: str.  "any" keeps the inferred value
         # uncoerced (for number-or-symbol values such as unit.density).
     required: bool     # default false
+    deprecated: bool   # default false; regulations section 2.2: warn, never remove
     default: value     # optional, for UI pre-fill and --fill-defaults
     doc: string        # optional
 

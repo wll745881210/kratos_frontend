@@ -76,3 +76,65 @@ class TestUnitChecks:
     def test_no_unit_section(self):
         s = mk({"mesh": {"n_cell_global": [64, 64, 1]}})
         assert unit_summary(s) is None
+
+
+def test_core_section_unknown_key_is_error():
+    # regulations §2.4.1: typo-catch for the four core sections
+    s = Spec(sections={"mesh": {"n_cell_global": [64, 64, 1],
+                                "x_min": [0, 0, 0], "x_max": [1, 1, 1],
+                                "n_cell_globa": [64, 64, 1]}})
+    issues = s.validate()
+    hits = [i for i in issues if i.where == "mesh.n_cell_globa"]
+    assert hits and all(i.level == "error" for i in hits)
+
+
+def test_module_section_unknown_key_stays_warning():
+    s = Spec(sections={"dynamics": {"gamma": 1.4, "gam": 1.3}})
+    hits = [i for i in s.validate() if i.where == "dynamics.gam"]
+    assert hits and all(i.level == "warning" for i in hits)
+
+
+def test_deprecated_key_warns(tmp_path):
+    import yaml
+    from kratos_spec.descriptors import load_registry
+    d = tmp_path / "dep.yaml"
+    d.write_text(yaml.safe_dump({
+        "section": "oldthing",
+        "keys": {"legacy": {"type": "int", "deprecated": True}}}))
+    reg = load_registry(str(tmp_path))
+    s = Spec(sections={"oldthing": {"legacy": 3}})
+    hits = [i for i in s.validate(reg) if i.where == "oldthing.legacy"]
+    assert hits and hits[0].level == "warning" and "deprecated" in hits[0].message
+
+
+def test_refine_region_out_of_domain_is_error():
+    s = Spec(sections={
+        "mesh": {"n_cell_global": [64, 64, 1], "x_min": [0, 0, 0],
+                 "x_max": [1, 1, 1]},
+        "refine_region_00": {"level": 1, "x_min": [0.2, -0.5, 0],
+                             "x_max": [0.4, 0.5, 1]}})
+    hits = [i for i in s.validate()
+            if i.where == "refine_region_00.x_min"]
+    assert hits and hits[0].level == "error"
+    assert "Incorrect SMR region" in hits[0].message
+
+
+def test_refine_region_level_zero_warns():
+    s = Spec(sections={
+        "mesh": {"n_cell_global": [64, 64, 1], "x_min": [0, 0, 0],
+                 "x_max": [1, 1, 1]},
+        "refine_region_00": {"level": 0, "x_min": [0.2, 0.2, 0],
+                             "x_max": [0.4, 0.5, 1]}})
+    hits = [i for i in s.validate()
+            if i.where == "refine_region_00.level"]
+    assert hits and hits[0].level == "warning"
+
+
+def test_refine_region_inside_domain_clean():
+    s = Spec(sections={
+        "mesh": {"n_cell_global": [64, 64, 1], "x_min": [0, 0, 0],
+                 "x_max": [1, 1, 1]},
+        "refine_region_00": {"level": 1, "x_min": [0.2, 0.2, 0],
+                             "x_max": [0.4, 0.5, 1]}})
+    assert not [i for i in s.validate()
+                if i.where.startswith("refine_region_00")]

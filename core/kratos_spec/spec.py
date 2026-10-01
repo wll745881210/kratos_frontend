@@ -32,6 +32,10 @@ from .values import format_value, infer_value
 SPEC_VERSION = 1
 
 
+# regulations §2.1: the four core super-parameter sections.
+CORE_SECTIONS = frozenset({"device", "unit", "mesh", "cycle"})
+
+
 @dataclass
 class Issue:
     level: str            # "error" | "warning"
@@ -90,10 +94,19 @@ class Spec:
                 continue  # raw passthrough
             for key, value in kv.items():
                 if key not in d.keys:
+                    # regulations §2.4.1: an unknown key in a core
+                    # super-parameter section is almost certainly a
+                    # typo -> error; module sections keep the warning
+                    # (forward compatibility).
+                    level = "error" if name in CORE_SECTIONS else "warning"
                     issues.append(Issue(
-                        "warning", f"{name}.{key}",
+                        level, f"{name}.{key}",
                         f"unknown key for section {name!r}"))
                     continue
+                if d.keys[key].deprecated:
+                    issues.append(Issue(
+                        "warning", f"{name}.{key}",
+                        f"key {name}.{key} is deprecated"))
                 try:
                     kv[key] = d.coerce(key, value)
                 except ValueError as exc:
