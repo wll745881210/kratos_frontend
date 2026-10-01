@@ -377,6 +377,44 @@ cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
   chem_sod EXIT=0、legacy fallback（无 [module.*]）EXIT=0。
   pytest 209/209（含 bindings 冒烟与 JSON Schema 校验）。
 
+### M1-E：通用 post-dynamics 模块（2026-10-01，用户提出）
+
+- **`usr_ext/universal/univ_post.h`**（trunk，usr_ext 不受 trunk git 跟踪）：
+  `univ::post_t`（mod_base_t + couplable_t 槽 `dyn` + role_aware_t），
+  注册名 `post`。全部功能关闭时 `step()` 完全跳过并在 init 打印
+  `cooling=0 turb=0 -- all off, step skipped`。
+- **表格冷却** `[post.cooling]`：enabled/file/mu_amu(0.6)/z_z0(0)/
+  T_cut(10)/heat0_cgs(0)/n_sub(8)；3 列 ASCII 表（log10T、log10Λ0、
+  log10Λ1，均匀 lnT 网格，读取器跳过 `#` 注释行——初版逐 token
+  `operator>>` 遇 `#` 直接 fail 是 bug）；lnT 空间修正向后欧拉 +
+  子循环；CGS 内部计算经 `[unit]` 换算；γ 取被耦合模块的
+  `p_eos->gamma`（不计成分依赖，已文档化）。
+- **湍流驱动** `[post.turb]`：enabled/v_turb(0.1)/k_turb(2π)/
+  n_modes(8, ≤16)/seed(42)/t_corr(1)；固定模式由 `expr::sm64`
+  确定性播种（球面方向 + 横向极化 + 相位，ω=k·v_turb）；
+  两段式：块内 `block_reduce` M=Σρ、S=Σρ|dv|²（CAS 原子加，
+  float/double 双实现）→ host 幅值 `v_turb·sqrt(dt/t_corr)·sqrt(M/S)`
+  → 施加踢（能量精确，nuke_mhd_turb 惯例）。
+- **精度纪律**（用户 m01190 硬性规定）：kratos 默认 PRECISION=1 混精
+  （float_t=FP32 / float2_t=FP64；PRECISION=2 全双、0 全单）。
+  除守恒量本身及其加减（float2_t）外一律 float_t —— 冷却等物理
+  计算全程 float_t；守恒量写入 `u += du` 与能量减法在 float2_t。
+  universal pgen 全部裸 `double` 已清除（expr.h 引擎内部除外，
+  按设计 double 常量 + 模板 eval）。
+- **验证（CUDA/sm_86/GPU1，全部 EXIT=0）**：
+  冷却——均匀气体 + 常数 Λ=1e-21，解析解 T(t)=T₀−Λn²t/c_v 线性
+  衰减，实测 1.904e7 K vs 解析 1.867e7 K（rel 1.95%）；
+  湍流——均匀静态盒 v_rms=2.45（v_turb=0.5 同量级），KE 从 0 增长，
+  ρ 发展出 0.11–5.42 可压缩结构；全关——Sod 物理逐位不变。
+  测试件在 `~/scratch/tst_kratos_frontend/post_{cool,turb,off}/`。
+- **新发现的 trunk 约束（重要）**：`phys::unit_t<type::float_t>`
+  （eos.h:35）是 **FP32** —— `[unit]` 组合若使 m0=ρ₀·l₀³、ene0 等
+  超出 float32 范围（如 length=1 kpc + density=mp → m0≈5e40 >
+  FLT_MAX=3.4e38）会在 init 抛 "Unit sys overflow"。**[unit] 设定
+  需避开溢出组合**（如 kpc→pc 或调整密度单位）。→ GUI 需求
+  （用户 m01306）：M2.6 Globals 视图必须有专门的 [unit] 编辑框，
+  并带溢出预检（m0/ene0 是否超 float32 范围的实时提示）。
+
 - M1 余项（仍在计划外暂缓）：重力槽（RT 等需要）、chem_mhd 通用
   包装（chem_mhd 需要反应网络，暂沿用 chem_hydro 被动模式）。
 

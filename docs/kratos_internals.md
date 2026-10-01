@@ -85,6 +85,15 @@
 
 ## 6. EoS / dt / 化学温度
 
+- **单位制 `phys::unit_t<f_T>`（`src/utilities/phys/unit.h`）**：
+  `[unit]` 支持 length/time + density（数字或 `"mp"`/`"mh"`）或 mass；
+  派生 `m0=ρ₀l₀³`、`vel0=l₀/t₀`、`ene0=ρ₀l₀²t₀⁻²`，任一为 nan/inf
+  即抛 "Unit sys overflow"。**dynamics eos 里的实例是
+  `unit_t<type::float_t>`（FP32，`prototypes/eos.h:35`）**——默认
+  PRECISION=1 下 `[unit]` 组合若使 m0 > 3.4e38（例：
+  length=1 kpc + density=mp → m0≈5e40 g）直接溢出。选单位时先心算
+  `ρ₀·l₀³`；GUI 的 [unit] 编辑框应实时预检（M2.6 需求，用户
+  m01306 提出）。
 - c2p 地板：`d_floor`、`pre_floor = t_floor·rho`。
 - 单点 `dt = cfl·dx/(cs+|v|)`；eos `operator()` 在 `step==0` 时
   block_reduce min → `atomic_min(p_dt)`。
