@@ -1,6 +1,6 @@
 /** Typed fetch client for the kratos_server REST API (v1). */
 
-import type { FsEntry, IcPreview, Issue, SectionDescriptor, Spec } from "../model/types";
+import type { BinPreview, FsEntry, IcPreview, Issue, SectionDescriptor, Spec } from "../model/types";
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, init);
@@ -74,6 +74,21 @@ export const api = {
       axis,
       ...(index !== undefined ? { index } : {}),
       ...(maxDim !== undefined ? { max_dim: maxDim } : {}),
+    }),
+
+  /** Read a kratos .bin output: exact AMR block list + optional slice. */
+  previewBin: (
+    path: string,
+    field?: string,
+    opts?: { block?: string; component?: number; axis?: number; index?: number },
+  ) =>
+    post<BinPreview>("/api/preview/bin", {
+      path,
+      ...(field ? { field } : {}),
+      ...(opts?.block ? { block: opts.block } : {}),
+      ...(opts?.component !== undefined ? { component: opts.component } : {}),
+      ...(opts?.axis !== undefined ? { axis: opts.axis } : {}),
+      ...(opts?.index !== undefined ? { index: opts.index } : {}),
     }),
 
   // ---- project / bundle (M2.4) ----

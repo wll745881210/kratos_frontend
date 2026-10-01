@@ -12,13 +12,15 @@ from fastapi.testclient import TestClient
 from kratos_server.app import create_app
 
 CORPUS = os.path.join(os.path.dirname(__file__), "corpus")
+FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 SOD_PAR = os.path.join(CORPUS, "sod.par")
+SOD_BIN = os.path.join(FIXTURES, "sod_univ_00000.bin")
 
 
 @pytest.fixture()
 def client(tmp_path):
     return TestClient(create_app(allowed_roots=[str(tmp_path),
-                                                CORPUS]))
+                                                CORPUS, FIXTURES]))
 
 
 # ----------------------------------------------------------------------
@@ -212,3 +214,35 @@ def test_bundle_endpoints(client, tmp_path):
     r = client.get("/api/project/load", params={"dir": dest})
     assert (r.json()["manifest"]["spec"]["sections"]["mesh"]
             ["n_cell_global"] == [128, 4, 1])
+
+
+# ----------------------------------------------------------------------
+def test_preview_bin_structure(client):
+    r = client.post("/api/preview/bin", json={"path": SOD_BIN})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["globals"]["time"] == pytest.approx(0.2)
+    assert j["blocks"][0]["n_cell"] == [512, 2, 1]
+    assert "hydro_cons" in j["fields"]["block_0"]
+
+
+def test_preview_bin_slice(client):
+    r = client.post("/api/preview/bin", json={
+        "path": SOD_BIN, "field": "hydro_cons", "component": 0,
+        "axis": 1, "index": 0})
+    assert r.status_code == 200
+    s = r.json()["slice"]
+    assert s["shape"] == [1, 512]
+    assert s["min"] == pytest.approx(0.125)
+    assert s["max"] == pytest.approx(1.0)
+
+
+def test_preview_bin_bad_field(client):
+    r = client.post("/api/preview/bin", json={
+        "path": SOD_BIN, "field": "nope"})
+    assert r.status_code == 400
+
+
+def test_preview_bin_outside_roots(client):
+    r = client.post("/api/preview/bin", json={"path": "/etc/hostname"})
+    assert r.status_code == 403

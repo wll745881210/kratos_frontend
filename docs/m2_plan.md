@@ -116,3 +116,11 @@ par 侧事实：`[mesh]`（x_min/x_max/n_cell_global/n_cell_block）+ `[refine_r
    kratos 树，不进默认 pytest）。Spec 中多 token par 值是字符串列表，
    求值前 join（镜像 `get_expr_str`）。AMR block 估计图（§5 视角）未做，
    仅基网格切片——挪入 M2.4 一并评估。
+10. M2.4/M2.5 完成项：bin 输出预览（`core/kratos_spec/binread.py` +
+    `vendor/binary_io.py` 逐字复制自 kratos 主干，仅依赖 numpy；服务端
+    `/api/preview/bin`；客户端 Preview tab 内 IC/BIN 模式切换）；项目清单
+    + bundle（whitelist 尺度覆盖，JSON Merge Patch）；图布局持久化进
+    `spec.meta.diagram_positions`（`onNodeDragStop` 整体写回）；OpenAPI
+    增加描述；`KRATOS_FRONT_DESCRIPTORS` / `KRATOS_FRONT_DIST` 环境变量
+    覆盖（非 editable 安装/Docker 用）；根目录 Dockerfile 多阶段镜像
+    （本机经镜像源构建并冒烟验证）。基镜像可用 build-arg 覆盖。

@@ -117,6 +117,40 @@ def _http_json(url: str, payload: dict | None = None,
         return json.loads(resp.read().decode())
 
 
+def _cmd_bin(args) -> int:
+    """Inspect a kratos .bin output: globals, blocks, fields."""
+    try:
+        from kratos_spec.binread import BinFile
+    except ImportError:
+        print("bin: numpy not installed; run `pip install -e .` again",
+              file=sys.stderr)
+        return 2
+    bf = BinFile(args.file)
+    try:
+        g = bf.globals()
+        print(f"{args.file}")
+        if g:
+            print(f"  time={g.get('time')}  cycle={g.get('cycle')}"
+                  f"  dt={g.get('dt')}")
+        for b in bf.blocks():
+            info = bf.block_info(b)
+            print(f"  {b}: level={info.level} n_cell={info.n_cell}"
+                  f" xf0={info.xf0} dx0={info.dx0}")
+            for f in bf.fields(b):
+                arr = bf.read_field(b, f)
+                import numpy as np
+                print(f"    {f}: shape={list(arr.shape)}"
+                      f" min={np.nanmin(arr):.6g} max={np.nanmax(arr):.6g}")
+        if args.field:
+            blk = bf.blocks()[0]
+            s = bf.slice2d(blk, args.field)
+            print(f"  slice {args.field}[0] axis=z idx={s['index']}:"
+                  f" shape={s['shape']} min={s['min']} max={s['max']}")
+    finally:
+        bf.close()
+    return 0
+
+
 def _cmd_open(args) -> int:
     """Open FILE.par in the web editor.
 
@@ -309,6 +343,11 @@ def main(argv: list[str] | None = None) -> int:
     bi.add_argument("dir")
     bi.add_argument("--override", help="JSON Merge Patch file (whitelisted)")
     bi.set_defaults(func=_cmd_bundle_import)
+
+    p = sub.add_parser("bin", help="inspect a kratos .bin output file")
+    p.add_argument("file")
+    p.add_argument("--field", help="also dump min/max of this field")
+    p.set_defaults(func=_cmd_bin)
 
     args = ap.parse_args(argv)
     return args.func(args)

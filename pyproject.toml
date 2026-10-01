@@ -9,6 +9,7 @@ description = "Problem Spec IR and tooling for the kratos graphical frontend"
 requires-python = ">=3.10"
 dependencies = [
     "pyyaml>=6.0",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
@@ -20,7 +21,7 @@ kratos-front = "kratos_spec.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "core", "kratos_server" = "web/server/kratos_server" }
-packages = ["kratos_spec", "kratos_server"]
+packages = ["kratos_spec", "kratos_spec.vendor", "kratos_server"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

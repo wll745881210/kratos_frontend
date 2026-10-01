@@ -49,3 +49,34 @@ export interface IcPreview {
   >;
   issues: Issue[];
 }
+
+/** .bin output preview (server binread; exact AMR blocks + slice). */
+export interface BinBlockInfo {
+  name: string;
+  level: number;
+  xf0: number[];
+  dx0: number[];
+  n_cell: number[];
+}
+
+export interface BinSlice {
+  block: string;
+  field: string;
+  component: number;
+  axis: number;
+  index: number;
+  n_index: number;
+  shape: number[];
+  extent: number[]; // [h0, h1, v0, v1] in plane coordinates
+  min: number | null;
+  max: number | null;
+  data: (number | null)[][];
+}
+
+export interface BinPreview {
+  path: string;
+  globals: Record<string, number>;
+  blocks: BinBlockInfo[];
+  fields: Record<string, string[]>;
+  slice?: BinSlice;
+}

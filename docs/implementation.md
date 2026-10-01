@@ -9,7 +9,7 @@
 | **M0** | 描述符目录 + `make bindings` + Spec→par CLI | ✅ **完成** (2026-09-30) |
 | M0.5 | REST/CLI 骨架 (FastAPI) | ✅ **完成** (2026-09-30，即 M2.0，见下) |
 | **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | 🔨 切片 A–D 完成：expr 引擎（word ops）+ univ_hydro/mhd/mg/chem 包装 + registry + 容器装配；**Sod（L1(ρ)=1.3e-3）、Brio-Wu（native 逐位一致）、inflow、chem Sod（CPU）全部验证通过**（详见 §M1 进展记录） |
-| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0–M2.4 完成（详案见 `docs/m2_plan.md`） |
+| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | ✅ M2.0–M2.5 完成（详案见 `docs/m2_plan.md`） |
 | M3 | Track B 代码生成 | ⬜ 未开始 |
 | M4 | LLM/Agent 接口 | ⬜ 未开始 |
 
@@ -194,6 +194,39 @@ web/client/src/components/ProjectDialog.tsx   # 编辑器 "Project…" 对话框
   `onNodeDragStop` 写回 `spec.meta.diagram_positions`；重新打开时优先使用
   持久化坐标，否则回退列式自动布局。
 - 测试：vitest 33/33；pytest 178/178。
+
+## M2.5 交付物（bin 预览 + REST/CLI 完善 + Docker）
+
+- **bin 读取器**：`core/kratos_spec/vendor/binary_io.py` —— 从 kratos 主干
+  `visual/binary_io.py` **逐字复制**的低层读取器（避免 scipy 依赖，仅需 numpy）；
+  `core/kratos_spec/binread.py` —— `BinFile`：`blocks()` / `block_info()` /
+  `fields()` / `read_field()`（剥 ghost，形状 `(n_int,nz,ny,nx)`）/
+  `slice2d(axis,index)`（rows=v cols=u，返回 extent/min/max）/
+  `read_args()`（二进制 item_map → dict）/ `globals()`（time/dt/cycle/i_out）。
+  注意：vendor 的 `open()` 不能用 `instant_close=True`（`__getitem__` 需要流保持打开）。
+- **服务端**：`POST /api/preview/bin {path, field?, block?, component?, axis?, index?}`
+  —— 无 field 时返回结构（globals/blocks/fields），有 field 时返回切片；
+  路径经白名单校验。FastAPI app 增加 description（/docs 与 /openapi.json 可读）。
+- **CLI**：`kratos-front bin FILE [--field f]` 打印 time/cycle/dt、每 block 几何
+  与各字段 shape/min/max。
+- **客户端**：PreviewView 顶部模式切换「IC (spec) / BIN (output)」；BIN 面板
+  （路径输入 → 结构 → block/field/分量/法向/切片滑块，防抖 300 ms，extent/min/max
+  读数）；画布渲染抽出共享 `drawHeat()`（行=v 列=u，null/NaN→灰）。
+- **环境变量**（Docker 友好）：`KRATOS_FRONT_DESCRIPTORS`（描述符目录，
+  `descriptors.default_root()` 优先读它）；`KRATOS_FRONT_DIST`（客户端 dist 目录）。
+  所有 Registry 访问都走 `load_default()` → `default_root()`，单点覆盖即可。
+- **Docker**：根目录 `Dockerfile`（多阶段：node 构建 dist → python slim
+  `pip install '.[server]'`；ENV 三个路径变量；EXPOSE 8620；
+  `CMD kratos-front serve --host 0.0.0.0`）+ `.dockerignore`；
+  基础镜像可用 `--build-arg NODE_IMAGE=/PY_IMAGE=` 覆盖（镜像源受限网络）。
+  本机验证（daocloud 镜像源）：容器内 health OK、`/api/preview/bin` 挂载
+  `/data` 读取 fixture 正确（time=0.2、block 几何正确）、`/` 返回构建后的 UI。
+  教训：容器里别忘了装 `[server]` extra（否则 CLI 报 "server extras not
+  installed" 直接退出）。
+- `pyproject.toml`：dependencies 增加 `numpy>=1.26`；packages 增加
+  `kratos_spec.vendor`（+ vendor/`__init__.py`）。
+- 测试：pytest **188/188**（+6 binread、+4 preview/bin 服务端）；vitest 33/33；
+  测试 fixture `tests/fixtures/sod_univ_00000.bin`（Sod 末态 t=0.2，42 KB）。
 
 ## M1 进展记录（usr_ext/universal，在 kratos 仓库内）
 

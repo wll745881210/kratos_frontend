@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__
+*.pyc
+node_modules
+web/client/node_modules
+web/client/dist
+tests/fixtures/*.bin
+*.egg-info
+.pytest_cache
+docs
+scripts

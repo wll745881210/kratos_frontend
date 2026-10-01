@@ -97,6 +97,15 @@ class PreviewIcRequest(BaseModel):
     max_dim: int = 384
 
 
+class BinPreviewRequest(BaseModel):
+    path: str
+    field: Optional[str] = None    # no field -> structure only
+    block: Optional[str] = None    # default: first block
+    component: int = 0
+    axis: int = 2                  # slice normal: 0=x 1=y 2=z
+    index: Optional[int] = None
+
+
 class ProjectInitRequest(BaseModel):
     dir: str
     text: Optional[str] = None  # par text; default minimal mesh+cycle
@@ -138,7 +147,16 @@ def _spec_from(payload: dict) -> Spec:
 # ----------------------------------------------------------------------
 def create_app(allowed_roots: list[str] | None = None) -> FastAPI:
     roots = allowed_roots if allowed_roots is not None else default_roots()
-    app = FastAPI(title="kratos-frontend server", version="0.1.0")
+    app = FastAPI(
+        title="kratos-frontend server",
+        version="0.1.0",
+        description=(
+            "Local REST API for the kratos universal-pgen frontend: "
+            "par <-> Spec round-trip, descriptor-driven validation, "
+            "IC/mesh/bin previews, project manifests and tar.gz bundles. "
+            "Interactive schema: /docs (Swagger UI) or /openapi.json."
+        ),
+    )
 
     app.add_middleware(  # dev convenience (Vite on :5173); proxy not needed
         CORSMiddleware, allow_origins=["http://localhost:5173",
@@ -185,6 +203,42 @@ def create_app(allowed_roots: list[str] | None = None) -> FastAPI:
         spec = _spec_from(req.spec)
         return ic_eval.eval_ic_slice(spec, axis=req.axis,
                                      index=req.index, max_dim=req.max_dim)
+
+    @app.post("/api/preview/bin")
+    def preview_bin(req: BinPreviewRequest):
+        # Read a kratos .bin output: exact AMR block list (level/xf0/dx0)
+        # plus an optional 2D field slice. Format reader is vendored at
+        # core/kratos_spec/vendor/binary_io.py (source of truth: kratos
+        # trunk visual/binary_io.py).
+        p = resolve_allowed(req.path, roots)
+        if not os.path.isfile(p):
+            raise HTTPException(404, f"not a file: {req.path!r}")
+        from kratos_spec.binread import BinFile
+        try:
+            bf = BinFile(p)
+        except Exception as e:
+            raise HTTPException(400, f"not a kratos .bin file: {e}")
+        try:
+            blocks = bf.blocks()
+            out = {
+                "path": p,
+                "globals": bf.globals(),
+                "blocks": [bf.block_info(b).__dict__ for b in blocks],
+                "fields": {b: bf.fields(b) for b in blocks},
+            }
+            if req.field:
+                blk = req.block or (blocks[0] if blocks else None)
+                if blk is None:
+                    raise HTTPException(400, "bin file has no blocks")
+                if req.field not in bf.fields(blk):
+                    raise HTTPException(
+                        400, f"no field {req.field!r} in {blk}; "
+                             f"have: {bf.fields(blk)}")
+                out["slice"] = bf.slice2d(blk, req.field, req.component,
+                                          req.axis, req.index)
+            return out
+        finally:
+            bf.close()
 
     @app.get("/api/fs/read")
     def fs_read(path: str = Query(...)):
@@ -286,10 +340,12 @@ def create_app(allowed_roots: list[str] | None = None) -> FastAPI:
             roots.append(p)
         return {"roots": list(roots)}
 
-    # built client, if present (registered last: catch-all mount)
-    dist = os.path.normpath(os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..", "..", "client", "dist"))
+    # built client, if present (registered last: catch-all mount).
+    # KRATOS_FRONT_DIST overrides the repo-relative default (Docker).
+    dist = os.environ.get("KRATOS_FRONT_DIST") or os.path.normpath(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..", "client", "dist"))
     if os.path.isdir(dist):
         app.mount("/", StaticFiles(directory=dist, html=True),
                   name="client")

@@ -197,7 +197,15 @@ def load_registry(root: str) -> Registry:
 
 
 def default_root() -> str:
-    """The descriptors/ directory shipped in this repository."""
+    """The descriptors/ directory shipped in this repository.
+
+    ``KRATOS_FRONT_DESCRIPTORS`` overrides the location (needed by
+    non-editable installs, e.g. inside Docker, where the repo checkout
+    is not reachable relative to this file).
+    """
+    env = os.environ.get("KRATOS_FRONT_DESCRIPTORS")
+    if env:
+        return env
     here = os.path.dirname(os.path.abspath(__file__))
     # core/kratos_spec/descriptors.py -> <repo>/descriptors
     return os.path.normpath(os.path.join(here, "..", "..", "descriptors"))
