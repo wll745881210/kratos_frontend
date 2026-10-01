@@ -1,466 +1,591 @@
 {
-  "comment": "Shared golden vectors for the univ::expr grammar (C++ source of truth: kratos usr_ext/universal/expr.h; Python port: core/kratos_spec/expr.py). Each vector: {name, expr, vars?, expect | error}. 'vars' = ordered {name: value} map (index order = declaration order); defaults to {x:0,y:0,z:0,t:0}. 'expect' = number or 'inf'/'-inf'/'nan'; 'error' = expected compile-error substring.",
-  "vectors": [
-    {
-      "name": "const",
-      "expr": "42",
-      "expect": 42
-    },
-    {
-      "name": "add_mul_precedence",
-      "expr": "1+2*3",
-      "expect": 7
-    },
-    {
-      "name": "mul_add_chain",
-      "expr": "2*3+4*5",
-      "expect": 26
-    },
-    {
-      "name": "parens",
-      "expr": "(1+2)*3",
-      "expect": 9
-    },
-    {
-      "name": "sub_left_assoc",
-      "expr": "10-4-3",
-      "expect": 3
-    },
-    {
-      "name": "div_left_assoc",
-      "expr": "20/5/2",
-      "expect": 2
-    },
-    {
-      "name": "unary_minus",
-      "expr": "-3+1",
-      "expect": -2
-    },
-    {
-      "name": "double_neg",
-      "expr": "--3",
-      "expect": 3
-    },
-    {
-      "name": "unary_minus_covers_pow",
-      "expr": "-2^2",
-      "expect": -4
-    },
-    {
-      "name": "pow_neg_exp",
-      "expr": "2^-1",
-      "expect": 0.5
-    },
-    {
-      "name": "pow_right_assoc",
-      "expr": "2^3^2",
-      "expect": 512
-    },
-    {
-      "name": "strtod_sign_quirk",
-      "expr": "1++2",
-      "expect": 3
-    },
-    {
-      "name": "sci_notation",
-      "expr": "2e3 + 1.5e-2",
-      "expect": 2000.015
-    },
-    {
-      "name": "hex_literal",
-      "expr": "0x10",
-      "expect": 16
-    },
-    {
-      "name": "whitespace",
-      "expr": "  1 + 2 * ( 3 + 4 )  ",
-      "expect": 15
-    },
-    {
-      "name": "lt_sym",
-      "expr": "1<2",
-      "expect": 1
-    },
-    {
-      "name": "le_sym",
-      "expr": "2<=2",
-      "expect": 1
-    },
-    {
-      "name": "gt_sym_false",
-      "expr": "3>4",
-      "expect": 0
-    },
-    {
-      "name": "ge_sym",
-      "expr": "4>=4",
-      "expect": 1
-    },
-    {
-      "name": "eq_sym",
-      "expr": "1==1",
-      "expect": 1
-    },
-    {
-      "name": "ne_sym_false",
-      "expr": "1!=1",
-      "expect": 0
-    },
-    {
-      "name": "lt_word",
-      "expr": "1 lt 2",
-      "expect": 1
-    },
-    {
-      "name": "leq_word",
-      "expr": "2 leq 2",
-      "expect": 1
-    },
-    {
-      "name": "gt_word_false",
-      "expr": "3 gt 4",
-      "expect": 0
-    },
-    {
-      "name": "geq_word",
-      "expr": "4 geq 4",
-      "expect": 1
-    },
-    {
-      "name": "eq_word",
-      "expr": "1 eq 1",
-      "expect": 1
-    },
-    {
-      "name": "ne_word_false",
-      "expr": "1 ne 1",
-      "expect": 0
-    },
-    {
-      "name": "neq_word",
-      "expr": "1 neq 2",
-      "expect": 1
-    },
-    {
-      "name": "ge_word",
-      "expr": "3 ge 2",
-      "expect": 1
-    },
-    {
-      "name": "le_word_false",
-      "expr": "2 le 1",
-      "expect": 0
-    },
-    {
-      "name": "and_sym",
-      "expr": "1<2 && 3<4",
-      "expect": 1
-    },
-    {
-      "name": "and_word",
-      "expr": "1 lt 2 and 3 lt 4",
-      "expect": 1
-    },
-    {
-      "name": "or_sym_false",
-      "expr": "1>2 || 3>4",
-      "expect": 0
-    },
-    {
-      "name": "or_word",
-      "expr": "1 gt 2 or 3 lt 4",
-      "expect": 1
-    },
-    {
-      "name": "not_word",
-      "expr": "not 0",
-      "expect": 1
-    },
-    {
-      "name": "not_word_false",
-      "expr": "not 5",
-      "expect": 0
-    },
-    {
-      "name": "not_sym",
-      "expr": "!0",
-      "expect": 1
-    },
-    {
-      "name": "and_numeric",
-      "expr": "2 and 3",
-      "expect": 1
-    },
-    {
-      "name": "or_numeric",
-      "expr": "2 or 0",
-      "expect": 1
-    },
-    {
-      "name": "or_zeros",
-      "expr": "0 or 0",
-      "expect": 0
-    },
-    {
-      "name": "cmp_add_precedence",
-      "expr": "1+2 lt 4",
-      "expect": 1
-    },
-    {
-      "name": "vars_mix",
-      "expr": "x+y*z-t",
-      "expect": 3,
-      "vars": {
-        "x": 1,
-        "y": 2,
-        "z": 3,
-        "t": 4
-      }
-    },
-    {
-      "name": "const_pi",
-      "expr": "pi",
-      "expect": 3.141592653589793
-    },
-    {
-      "name": "const_e",
-      "expr": "e",
-      "expect": 2.718281828459045
-    },
-    {
-      "name": "var_geq_mask",
-      "expr": "x geq 0.5",
-      "expect": 1,
-      "vars": {
-        "x": 0.5,
-        "y": 0,
-        "z": 0,
-        "t": 0
-      }
-    },
-    {
-      "name": "var_geq_mask_false",
-      "expr": "x geq 0.5",
-      "expect": 0,
-      "vars": {
-        "x": 0.4999,
-        "y": 0,
-        "z": 0,
-        "t": 0
-      }
-    },
-    {
-      "name": "dotted_ident",
-      "expr": "rho.left*2",
-      "vars": {
-        "rho.left": 5
-      },
-      "expect": 10
-    },
-    {
-      "name": "fn_sqrt",
-      "expr": "sqrt(16)",
-      "expect": 4
-    },
-    {
-      "name": "fn_exp",
-      "expr": "exp(0)",
-      "expect": 1
-    },
-    {
-      "name": "fn_log_e",
-      "expr": "log(e)",
-      "expect": 1
-    },
-    {
-      "name": "fn_sin",
-      "expr": "sin(0)",
-      "expect": 0
-    },
-    {
-      "name": "fn_cos",
-      "expr": "cos(0)",
-      "expect": 1
-    },
-    {
-      "name": "fn_tan",
-      "expr": "tan(0)",
-      "expect": 0
-    },
-    {
-      "name": "fn_asin",
-      "expr": "asin(1)",
-      "expect": 1.5707963267948966
-    },
-    {
-      "name": "fn_acos",
-      "expr": "acos(1)",
-      "expect": 0
-    },
-    {
-      "name": "fn_atan",
-      "expr": "atan(1)",
-      "expect": 0.7853981633974483
-    },
-    {
-      "name": "fn_abs",
-      "expr": "abs(-3)",
-      "expect": 3
-    },
-    {
-      "name": "fn_step_neg",
-      "expr": "step(-0.5)",
-      "expect": 0
-    },
-    {
-      "name": "fn_step_zero",
-      "expr": "step(0)",
-      "expect": 1
-    },
-    {
-      "name": "fn_floor_pos",
-      "expr": "floor(2.7)",
-      "expect": 2
-    },
-    {
-      "name": "fn_floor_neg",
-      "expr": "floor(-2.3)",
-      "expect": -3
-    },
-    {
-      "name": "fn_min",
-      "expr": "min(2,3)",
-      "expect": 2
-    },
-    {
-      "name": "fn_max",
-      "expr": "max(2,3)",
-      "expect": 3
-    },
-    {
-      "name": "fn_pow",
-      "expr": "pow(2,10)",
-      "expect": 1024
-    },
-    {
-      "name": "fn_atan2",
-      "expr": "atan2(1,0)",
-      "expect": 1.5707963267948966
-    },
-    {
-      "name": "fn_clamp_mid",
-      "expr": "clamp(2,1,3)",
-      "expect": 2
-    },
-    {
-      "name": "fn_clamp_hi",
-      "expr": "clamp(5,1,3)",
-      "expect": 3
-    },
-    {
-      "name": "fn_clamp_lo",
-      "expr": "clamp(-5,1,3)",
-      "expect": 1
-    },
-    {
-      "name": "fn_nested",
-      "expr": "sqrt(min(9, max(4, 16)))",
-      "expect": 3
-    },
-    {
-      "name": "ieee_div_pos",
-      "expr": "1/0",
-      "expect": "inf"
-    },
-    {
-      "name": "ieee_div_neg",
-      "expr": "-1/0",
-      "expect": "-inf"
-    },
-    {
-      "name": "ieee_div_00",
-      "expr": "0/0",
-      "expect": "nan"
-    },
-    {
-      "name": "ieee_sqrt_neg",
-      "expr": "sqrt(-1)",
-      "expect": "nan"
-    },
-    {
-      "name": "ieee_log_zero",
-      "expr": "log(0)",
-      "expect": "-inf"
-    },
-    {
-      "name": "ieee_log_neg",
-      "expr": "log(-1)",
-      "expect": "nan"
-    },
-    {
-      "name": "ieee_exp_overflow",
-      "expr": "exp(1000)",
-      "expect": "inf"
-    },
-    {
-      "name": "ieee_pow_pole",
-      "expr": "pow(0,-1)",
-      "expect": "inf"
-    },
-    {
-      "name": "err_empty",
-      "expr": "",
-      "error": "empty expression"
-    },
-    {
-      "name": "err_trailing_op",
-      "expr": "1 +",
-      "error": "unexpected end"
-    },
-    {
-      "name": "err_trailing_chars",
-      "expr": "1 2",
-      "error": "trailing characters"
-    },
-    {
-      "name": "err_unknown_var",
-      "expr": "foo",
-      "error": "unknown variable 'foo'"
-    },
-    {
-      "name": "err_reserved_as_var",
-      "expr": "and",
-      "error": "unknown variable 'and'"
-    },
-    {
-      "name": "err_unknown_func",
-      "expr": "foo(1)",
-      "error": "unknown function 'foo'"
-    },
-    {
-      "name": "err_missing_rparen",
-      "expr": "(1",
-      "error": "missing ')'"
-    },
-    {
-      "name": "err_missing_comma",
-      "expr": "min(1)",
-      "error": "missing ',' in min()"
-    },
-    {
-      "name": "err_missing_func_rparen",
-      "expr": "min(1,2",
-      "error": "missing ')' in min()"
-    },
-    {
-      "name": "err_unexpected_char",
-      "expr": "@",
-      "error": "unexpected character"
-    },
-    {
-      "name": "err_word_boundary",
-      "expr": "x geq0.5",
-      "error": "trailing characters"
-    }
-  ]
+ "comment": "Shared golden vectors for the univ::expr grammar (C++ source of truth: kratos usr_ext/universal/expr.h; Python port: core/kratos_spec/expr.py). Each vector: {name, expr, vars?, expect | error}. 'vars' = ordered {name: value} map (index order = declaration order); defaults to {x:0,y:0,z:0,t:0}. 'expect' = number or 'inf'/'-inf'/'nan'; 'error' = expected compile-error substring.",
+ "vectors": [
+  {
+   "name": "const",
+   "expr": "42",
+   "expect": 42
+  },
+  {
+   "name": "add_mul_precedence",
+   "expr": "1+2*3",
+   "expect": 7
+  },
+  {
+   "name": "mul_add_chain",
+   "expr": "2*3+4*5",
+   "expect": 26
+  },
+  {
+   "name": "parens",
+   "expr": "(1+2)*3",
+   "expect": 9
+  },
+  {
+   "name": "sub_left_assoc",
+   "expr": "10-4-3",
+   "expect": 3
+  },
+  {
+   "name": "div_left_assoc",
+   "expr": "20/5/2",
+   "expect": 2
+  },
+  {
+   "name": "unary_minus",
+   "expr": "-3+1",
+   "expect": -2
+  },
+  {
+   "name": "double_neg",
+   "expr": "--3",
+   "expect": 3
+  },
+  {
+   "name": "unary_minus_covers_pow",
+   "expr": "-2^2",
+   "expect": -4
+  },
+  {
+   "name": "pow_neg_exp",
+   "expr": "2^-1",
+   "expect": 0.5
+  },
+  {
+   "name": "pow_right_assoc",
+   "expr": "2^3^2",
+   "expect": 512
+  },
+  {
+   "name": "strtod_sign_quirk",
+   "expr": "1++2",
+   "expect": 3
+  },
+  {
+   "name": "sci_notation",
+   "expr": "2e3 + 1.5e-2",
+   "expect": 2000.015
+  },
+  {
+   "name": "hex_literal",
+   "expr": "0x10",
+   "expect": 16
+  },
+  {
+   "name": "whitespace",
+   "expr": "  1 + 2 * ( 3 + 4 )  ",
+   "expect": 15
+  },
+  {
+   "name": "lt_sym",
+   "expr": "1<2",
+   "expect": 1
+  },
+  {
+   "name": "le_sym",
+   "expr": "2<=2",
+   "expect": 1
+  },
+  {
+   "name": "gt_sym_false",
+   "expr": "3>4",
+   "expect": 0
+  },
+  {
+   "name": "ge_sym",
+   "expr": "4>=4",
+   "expect": 1
+  },
+  {
+   "name": "eq_sym",
+   "expr": "1==1",
+   "expect": 1
+  },
+  {
+   "name": "ne_sym_false",
+   "expr": "1!=1",
+   "expect": 0
+  },
+  {
+   "name": "lt_word",
+   "expr": "1 lt 2",
+   "expect": 1
+  },
+  {
+   "name": "leq_word",
+   "expr": "2 leq 2",
+   "expect": 1
+  },
+  {
+   "name": "gt_word_false",
+   "expr": "3 gt 4",
+   "expect": 0
+  },
+  {
+   "name": "geq_word",
+   "expr": "4 geq 4",
+   "expect": 1
+  },
+  {
+   "name": "eq_word",
+   "expr": "1 eq 1",
+   "expect": 1
+  },
+  {
+   "name": "ne_word_false",
+   "expr": "1 ne 1",
+   "expect": 0
+  },
+  {
+   "name": "neq_word",
+   "expr": "1 neq 2",
+   "expect": 1
+  },
+  {
+   "name": "ge_word",
+   "expr": "3 ge 2",
+   "expect": 1
+  },
+  {
+   "name": "le_word_false",
+   "expr": "2 le 1",
+   "expect": 0
+  },
+  {
+   "name": "and_sym",
+   "expr": "1<2 && 3<4",
+   "expect": 1
+  },
+  {
+   "name": "and_word",
+   "expr": "1 lt 2 and 3 lt 4",
+   "expect": 1
+  },
+  {
+   "name": "or_sym_false",
+   "expr": "1>2 || 3>4",
+   "expect": 0
+  },
+  {
+   "name": "or_word",
+   "expr": "1 gt 2 or 3 lt 4",
+   "expect": 1
+  },
+  {
+   "name": "not_word",
+   "expr": "not 0",
+   "expect": 1
+  },
+  {
+   "name": "not_word_false",
+   "expr": "not 5",
+   "expect": 0
+  },
+  {
+   "name": "not_sym",
+   "expr": "!0",
+   "expect": 1
+  },
+  {
+   "name": "and_numeric",
+   "expr": "2 and 3",
+   "expect": 1
+  },
+  {
+   "name": "or_numeric",
+   "expr": "2 or 0",
+   "expect": 1
+  },
+  {
+   "name": "or_zeros",
+   "expr": "0 or 0",
+   "expect": 0
+  },
+  {
+   "name": "cmp_add_precedence",
+   "expr": "1+2 lt 4",
+   "expect": 1
+  },
+  {
+   "name": "vars_mix",
+   "expr": "x+y*z-t",
+   "expect": 3,
+   "vars": {
+    "x": 1,
+    "y": 2,
+    "z": 3,
+    "t": 4
+   }
+  },
+  {
+   "name": "const_pi",
+   "expr": "pi",
+   "expect": 3.141592653589793
+  },
+  {
+   "name": "const_e",
+   "expr": "e",
+   "expect": 2.718281828459045
+  },
+  {
+   "name": "var_geq_mask",
+   "expr": "x geq 0.5",
+   "expect": 1,
+   "vars": {
+    "x": 0.5,
+    "y": 0,
+    "z": 0,
+    "t": 0
+   }
+  },
+  {
+   "name": "var_geq_mask_false",
+   "expr": "x geq 0.5",
+   "expect": 0,
+   "vars": {
+    "x": 0.4999,
+    "y": 0,
+    "z": 0,
+    "t": 0
+   }
+  },
+  {
+   "name": "dotted_ident",
+   "expr": "rho.left*2",
+   "vars": {
+    "rho.left": 5
+   },
+   "expect": 10
+  },
+  {
+   "name": "fn_sqrt",
+   "expr": "sqrt(16)",
+   "expect": 4
+  },
+  {
+   "name": "fn_exp",
+   "expr": "exp(0)",
+   "expect": 1
+  },
+  {
+   "name": "fn_log_e",
+   "expr": "log(e)",
+   "expect": 1
+  },
+  {
+   "name": "fn_sin",
+   "expr": "sin(0)",
+   "expect": 0
+  },
+  {
+   "name": "fn_cos",
+   "expr": "cos(0)",
+   "expect": 1
+  },
+  {
+   "name": "fn_tan",
+   "expr": "tan(0)",
+   "expect": 0
+  },
+  {
+   "name": "fn_asin",
+   "expr": "asin(1)",
+   "expect": 1.5707963267948966
+  },
+  {
+   "name": "fn_acos",
+   "expr": "acos(1)",
+   "expect": 0
+  },
+  {
+   "name": "fn_atan",
+   "expr": "atan(1)",
+   "expect": 0.7853981633974483
+  },
+  {
+   "name": "fn_abs",
+   "expr": "abs(-3)",
+   "expect": 3
+  },
+  {
+   "name": "fn_step_neg",
+   "expr": "step(-0.5)",
+   "expect": 0
+  },
+  {
+   "name": "fn_step_zero",
+   "expr": "step(0)",
+   "expect": 1
+  },
+  {
+   "name": "fn_floor_pos",
+   "expr": "floor(2.7)",
+   "expect": 2
+  },
+  {
+   "name": "fn_floor_neg",
+   "expr": "floor(-2.3)",
+   "expect": -3
+  },
+  {
+   "name": "fn_min",
+   "expr": "min(2,3)",
+   "expect": 2
+  },
+  {
+   "name": "fn_max",
+   "expr": "max(2,3)",
+   "expect": 3
+  },
+  {
+   "name": "fn_pow",
+   "expr": "pow(2,10)",
+   "expect": 1024
+  },
+  {
+   "name": "fn_atan2",
+   "expr": "atan2(1,0)",
+   "expect": 1.5707963267948966
+  },
+  {
+   "name": "fn_clamp_mid",
+   "expr": "clamp(2,1,3)",
+   "expect": 2
+  },
+  {
+   "name": "fn_clamp_hi",
+   "expr": "clamp(5,1,3)",
+   "expect": 3
+  },
+  {
+   "name": "fn_clamp_lo",
+   "expr": "clamp(-5,1,3)",
+   "expect": 1
+  },
+  {
+   "name": "fn_nested",
+   "expr": "sqrt(min(9, max(4, 16)))",
+   "expect": 3
+  },
+  {
+   "name": "ieee_div_pos",
+   "expr": "1/0",
+   "expect": "inf"
+  },
+  {
+   "name": "ieee_div_neg",
+   "expr": "-1/0",
+   "expect": "-inf"
+  },
+  {
+   "name": "ieee_div_00",
+   "expr": "0/0",
+   "expect": "nan"
+  },
+  {
+   "name": "ieee_sqrt_neg",
+   "expr": "sqrt(-1)",
+   "expect": "nan"
+  },
+  {
+   "name": "ieee_log_zero",
+   "expr": "log(0)",
+   "expect": "-inf"
+  },
+  {
+   "name": "ieee_log_neg",
+   "expr": "log(-1)",
+   "expect": "nan"
+  },
+  {
+   "name": "ieee_exp_overflow",
+   "expr": "exp(1000)",
+   "expect": "inf"
+  },
+  {
+   "name": "ieee_pow_pole",
+   "expr": "pow(0,-1)",
+   "expect": "inf"
+  },
+  {
+   "name": "err_empty",
+   "expr": "",
+   "error": "empty expression"
+  },
+  {
+   "name": "err_trailing_op",
+   "expr": "1 +",
+   "error": "unexpected end"
+  },
+  {
+   "name": "err_trailing_chars",
+   "expr": "1 2",
+   "error": "trailing characters"
+  },
+  {
+   "name": "err_unknown_var",
+   "expr": "foo",
+   "error": "unknown variable 'foo'"
+  },
+  {
+   "name": "err_reserved_as_var",
+   "expr": "and",
+   "error": "unknown variable 'and'"
+  },
+  {
+   "name": "err_unknown_func",
+   "expr": "foo(1)",
+   "error": "unknown function 'foo'"
+  },
+  {
+   "name": "err_missing_rparen",
+   "expr": "(1",
+   "error": "missing ')'"
+  },
+  {
+   "name": "err_missing_comma",
+   "expr": "min(1)",
+   "error": "missing ',' in min()"
+  },
+  {
+   "name": "err_missing_func_rparen",
+   "expr": "min(1,2",
+   "error": "missing ')' in min()"
+  },
+  {
+   "name": "err_unexpected_char",
+   "expr": "@",
+   "error": "unexpected character"
+  },
+  {
+   "name": "err_word_boundary",
+   "expr": "x geq0.5",
+   "error": "trailing characters"
+  },
+  {
+   "name": "fn_tanh",
+   "expr": "tanh(x)",
+   "vars": {
+    "x": 0.3
+   },
+   "expect": 0.2913126124515909
+  },
+  {
+   "name": "fn_tanh_sat",
+   "expr": "tanh(45)",
+   "expect": 1.0
+  },
+  {
+   "name": "fn_sinh",
+   "expr": "sinh(y)",
+   "vars": {
+    "y": -0.7
+   },
+   "expect": -0.7585837018395334
+  },
+  {
+   "name": "fn_cosh",
+   "expr": "cosh(z)",
+   "vars": {
+    "z": 2.0
+   },
+   "expect": 3.7621956910836314
+  },
+  {
+   "name": "fn_erf",
+   "expr": "erf(t)",
+   "vars": {
+    "t": 0.5
+   },
+   "expect": 0.5204998778130465
+  },
+  {
+   "name": "ieee_sinh_overflow",
+   "expr": "sinh(1000)",
+   "expect": "inf"
+  },
+  {
+   "name": "ieee_sinh_overflow_neg",
+   "expr": "sinh(-1000)",
+   "expect": "-inf"
+  },
+  {
+   "name": "var_ijk",
+   "expr": "i+10*j+100*k",
+   "vars": {
+    "i": 4,
+    "j": 5,
+    "k": 6
+   },
+   "expect": 654.0
+  },
+  {
+   "name": "rand_det",
+   "expr": "rand(i,j,k,42)",
+   "vars": {
+    "i": 4,
+    "j": 5,
+    "k": 6
+   },
+   "expect": 0.6832016003834471
+  },
+  {
+   "name": "rand_det_repeat",
+   "expr": "rand(i,j,k,42)",
+   "vars": {
+    "i": 4,
+    "j": 5,
+    "k": 6
+   },
+   "expect": 0.6832016003834471
+  },
+  {
+   "name": "rand_seed",
+   "expr": "rand(i,j,k,43)",
+   "vars": {
+    "i": 4,
+    "j": 5,
+    "k": 6
+   },
+   "expect": 0.34998240658406277
+  },
+  {
+   "name": "rand_cell",
+   "expr": "rand(i,j,k,42)",
+   "vars": {
+    "i": 5,
+    "j": 5,
+    "k": 6
+   },
+   "expect": 0.9459008816907575
+  },
+  {
+   "name": "perturb_recipe",
+   "expr": "0.01*(2*rand(i,j,k,7)-1)",
+   "vars": {
+    "i": 12,
+    "j": 34,
+    "k": 56
+   },
+   "expect": -0.0012595027815274595
+  },
+  {
+   "name": "kh_recipe",
+   "expr": "1-0.5*tanh((abs(y)-0.25)/0.01)",
+   "vars": {
+    "y": -0.7
+   },
+   "expect": 0.5
+  },
+  {
+   "name": "err_rand_arity",
+   "expr": "rand(1,2,3)",
+   "error": "missing ',' in rand()"
+  },
+  {
+   "name": "err_tanh_var",
+   "expr": "tanh",
+   "error": "unknown variable 'tanh'"
+  }
+ ]
 }

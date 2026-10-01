@@ -1,0 +1,50 @@
+# Expression grammar as data (计划书 §5: grammar 数据文件).
+#
+# The SEMANTIC source of truth is usr_ext/universal/expr.h (C++); the
+# Python port (core/kratos_spec/expr.py) matches it exactly under the
+# golden vectors in tests/golden/expr_vectors.json.  THIS file is the
+# PRESENTATION source of truth: the frontend renders palette entries,
+# tooltips and help from it.  Keep all three in sync; the golden
+# vectors must cover every function/operator listed here.
+
+constants:
+- { name: pi, value: 3.14159265358979323846 }
+- { name: e,  value: 2.71828182845904523536 }
+
+variables:
+- { name: x, index: 0, doc: cell-center coordinates (code units) }
+- { name: y, index: 1, doc: cell-center coordinates (code units) }
+- { name: z, index: 2, doc: cell-center coordinates (code units) }
+- { name: t, index: 3, doc: "time: [cycle] t_0 for ICs; current time for expr_inflow BC" }
+- { name: i, index: 4, doc: integer cell index (for rand()) }
+- { name: j, index: 5, doc: integer cell index (for rand()) }
+- { name: k, index: 6, doc: integer cell index (for rand()) }
+
+functions:
+  one_arg: [sqrt, exp, log, sin, cos, tan, asin, acos, atan,
+            abs, step, floor, tanh, sinh, cosh, erf]
+  two_arg: [min, max, pow, atan2]
+  three_arg: [clamp]
+  special:
+  - name: rand
+    arity: 4
+    signature: rand(i, j, k, seed)
+    doc: >
+      Deterministic uniform deviate in [0,1): splitmix64 chain
+      sm64(seed)->+i->+j->+k, args rounded half-to-even to int64.
+      Bit-identical on host, GPU and in the Python preview.
+
+operators:
+  arithmetic: ['+', '-', '*', '/', '^']
+  comparison_symbolic: ['<', '<=', '>', '>=', '==', '!=']
+  comparison_words: [lt, leq, gt, geq, eq, ne, neq]
+  logical: ['&&', '||', '!', and, or, not]
+notes:
+- par files cannot carry '=' in values (lexer truncates at the
+  second '='), so in par files use the word forms geq leq neq etc.
+- get<string> truncates at whitespace; the universal pgen reads
+  expressions as token vectors and re-joins them, so spaces are fine.
+- Comparisons and logicals yield 1.0 / 0.0; masks are active where
+  they evaluate to anything != 0.
+- "'^' is right-associative: 2^3^2 = 2^(3^2) = 512."
+- step(a) = 1 when a >= 0 else 0.

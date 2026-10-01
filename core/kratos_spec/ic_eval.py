@@ -191,24 +191,36 @@ def eval_ic_slice(
 
     axes_uv = [a for a in (0, 1, 2) if a != axis]
     strides = {a: max(1, math.ceil(n_cell[a] / max_dim)) for a in (0, 1, 2)}
+    iu_list = list(range(0, n_cell[axes_uv[0]], strides[axes_uv[0]]))
+    iv_list = list(range(0, n_cell[axes_uv[1]], strides[axes_uv[1]]))
 
-    def centers(a: int) -> List[float]:
+    def center(a: int, i: int) -> float:
         dx = (x_max[a] - x_min[a]) / n_cell[a]
-        return [x_min[a] + (i + 0.5) * dx for i in range(0, n_cell[a], strides[a])]
+        return x_min[a] + (i + 0.5) * dx
 
-    cu, cv = centers(axes_uv[0]), centers(axes_uv[1])
-    coord = x_min[axis] + (index + 0.5) * (x_max[axis] - x_min[axis]) / n_cell[axis]
+    cu = [center(axes_uv[0], i) for i in iu_list]
+    cv = [center(axes_uv[1], i) for i in iv_list]
+    coord = center(axis, index)
+
+    # [cycle] t_0 is exposed as expression variable `t` (mirrors the
+    # universal pgen's ic.t0).
+    cyc = spec.sections.get("cycle", {})
+    try:
+        t0 = float(cyc.get("t_0", 0.0))
+    except (TypeError, ValueError):
+        t0 = 0.0
 
     species = _species_list(spec)
     names = _channel_names(spec, base, regions)
 
-    def state_at(xyz: List[float]) -> Dict[str, float]:
+    def state_at(xyz: List[float], ijk: List[int]) -> Dict[str, float]:
         st = dict(base)
-        vars4 = [xyz[0], xyz[1], xyz[2], 0.0]  # t = 0 for IC
+        vars7 = [xyz[0], xyz[1], xyz[2], t0,
+                 float(ijk[0]), float(ijk[1]), float(ijk[2])]
         for r in regions:
-            if expr.evaluate(r.mask, vars4) != 0.0:
+            if expr.evaluate(r.mask, vars7) != 0.0:
                 for ch, prog in r.channels.items():
-                    st[ch] = expr.evaluate(prog, vars4)
+                    st[ch] = expr.evaluate(prog, vars7)
         if species:
             norm = sum(st.get(f"x.{s}", 0.0) for s in species)
             for s in species:
@@ -217,14 +229,18 @@ def eval_ic_slice(
 
     fields: Dict[str, dict] = {}
     grids: Dict[str, List[List[Optional[float]]]] = {n: [] for n in names}
-    for yv in cv:
+    for j_iv, yv in zip(iv_list, cv):
         rows: Dict[str, List[Optional[float]]] = {n: [] for n in names}
-        for xu in cu:
+        for i_iu, xu in zip(iu_list, cu):
             xyz = [0.0, 0.0, 0.0]
             xyz[axis] = coord
             xyz[axes_uv[0]] = xu
             xyz[axes_uv[1]] = yv
-            st = state_at(xyz)
+            ijk = [0, 0, 0]
+            ijk[axis] = index
+            ijk[axes_uv[0]] = i_iu
+            ijk[axes_uv[1]] = j_iv
+            st = state_at(xyz, ijk)
             for n in names:
                 val = st.get(n, 0.0)
                 rows[n].append(val if math.isfinite(val) else None)

@@ -19,9 +19,13 @@ Grammar (precedence low -> high):
   pow   := prim  ( '^' unary )?              (right assoc)
   prim  := number | ident | func '(' args ')' | '(' or ')'
 
-Constants: pi, e.  Variables default: x, y, z, t (indices 0..3).
-Functions: sqrt exp log sin cos tan asin acos atan abs step floor (1-arg);
-           min max pow atan2 (2-arg); clamp (3-arg).  step(a) = a>=0 ? 1:0.
+Constants: pi, e.  Variables default: x, y, z, t, i, j, k (indices 0..6;
+i/j/k are integer cell indices, enabling grid-scale white noise via rand).
+Functions: sqrt exp log sin cos tan asin acos atan abs step floor
+           tanh sinh cosh erf (1-arg); min max pow atan2 (2-arg);
+           clamp (3-arg); rand(i,j,k,seed) (4-arg) = deterministic uniform
+           deviate in [0,1): splitmix64(seed)->+i->+j->+k chain, args
+           rounded half-to-even to int64.  step(a) = a>=0 ? 1:0.
 Word operators (lt leq gt geq eq ne neq and or not) exist because kratos
 par files cannot carry '='; they are reserved words.
 Comparisons/logicals yield 1.0/0.0.
@@ -70,7 +74,12 @@ from typing import Dict, List, Optional, Sequence, Tuple
     NE,
     AND,
     OR,
-) = range(33)
+    TANH,
+    SINH,
+    COSH,
+    ERF,
+    RAND4,
+) = range(38)
 
 MAX_CODE = 1024
 MAX_STACK = 32
@@ -78,7 +87,20 @@ MAX_STACK = 32
 Instr = Tuple[int, float]          # (op, arg)
 Program = List[Instr]
 
-DEFAULT_VARS: Dict[str, int] = {"x": 0, "y": 1, "z": 2, "t": 3}
+DEFAULT_VARS: Dict[str, int] = {
+    "x": 0, "y": 1, "z": 2, "t": 3, "i": 4, "j": 5, "k": 6,
+}
+
+# splitmix64 finalizer behind rand(); pure uint64 arithmetic,
+# bit-identical to the C++ engine.
+_MASK64 = (1 << 64) - 1
+
+
+def _sm64(x: int) -> int:
+    x = (x + 0x9E3779B97F4A7C15) & _MASK64
+    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & _MASK64
+    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & _MASK64
+    return (x ^ (x >> 31)) & _MASK64
 
 # strtod-compatible literals: 3.14159265358979323846 -> math.pi (same double)
 PI = 3.14159265358979323846
@@ -116,9 +138,9 @@ def _safe1(fn):
         try:
             return fn(a)
         except (ValueError, OverflowError):
-            # domain error -> nan; overflow -> inf (matches libm)
-            if fn in (math.exp,):
-                return math.inf
+            # domain error -> nan; overflow -> ±inf (matches libm)
+            if fn in (math.exp, math.sinh, math.cosh):
+                return math.copysign(math.inf, a)
             return math.nan
 
     return wrap
@@ -228,6 +250,25 @@ def evaluate(prog: Program, vars: Sequence[float]) -> float:
         elif op == OR:
             b = st.pop()
             st[-1] = 1.0 if (st[-1] != 0.0 or b != 0.0) else 0.0
+        elif op == TANH:
+            st[-1] = math.tanh(st[-1])
+        elif op == SINH:
+            st[-1] = _safe1(math.sinh)(st[-1])
+        elif op == COSH:
+            st[-1] = _safe1(math.cosh)(st[-1])
+        elif op == ERF:
+            st[-1] = math.erf(st[-1])
+        elif op == RAND4:
+            # rand(i,j,k,seed): deterministic white noise in [0,1)
+            vs = st.pop()
+            vk = st.pop()
+            vj = st.pop()
+            vi = st.pop()
+            h = _sm64(int(round(vs)) & _MASK64)
+            h = _sm64((h + (int(round(vi)) & _MASK64)) & _MASK64)
+            h = _sm64((h + (int(round(vj)) & _MASK64)) & _MASK64)
+            h = _sm64((h + (int(round(vk)) & _MASK64)) & _MASK64)
+            push((h >> 11) * (1.0 / 9007199254740992.0))
         else:  # pragma: no cover - unreachable for compiled programs
             raise ExprError(f"expr: bad opcode {op}")
         if len(st) > MAX_STACK:
@@ -268,6 +309,11 @@ _FUNC_TAB: Dict[str, Tuple[int, int]] = {
     "pow": (POW, 2),
     "atan2": (ATAN2, 2),
     "clamp": (CLAMP, 3),
+    "tanh": (TANH, 1),
+    "sinh": (SINH, 1),
+    "cosh": (COSH, 1),
+    "erf": (ERF, 1),
+    "rand": (RAND4, 4),
 }
 
 _CMP_OPS: List[Tuple[str, int]] = [

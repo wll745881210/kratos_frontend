@@ -103,6 +103,15 @@ def _cmd_serve(args) -> int:
     return 0
 
 
+def _cmd_bindings(args) -> int:
+    from .bindings import run_bindings
+
+    outs = run_bindings(args.outdir)
+    for o in outs:
+        print(f"wrote {o}")
+    return 0
+
+
 def _http_json(url: str, payload: dict | None = None,
                timeout: float = 2.0) -> dict:
     """Tiny stdlib JSON client (keeps `open` free of httpx)."""
@@ -313,6 +322,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8620)
     p.set_defaults(func=_cmd_serve)
+
+    p = sub.add_parser(
+        "bindings", help="generate blocklib/Schema/univ_proxy.gen.h/docs "
+        "from descriptors (make bindings)")
+    p.add_argument("outdir", nargs="?", default="generated")
+    p.set_defaults(func=_cmd_bindings)
 
     p = sub.add_parser("open", help="open a par file in the web editor")
     p.add_argument("par")

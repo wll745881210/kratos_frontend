@@ -8,7 +8,7 @@
 |---|---|---|
 | **M0** | 描述符目录 + `make bindings` + Spec→par CLI | ✅ **完成** (2026-09-30) |
 | M0.5 | REST/CLI 骨架 (FastAPI) | ✅ **完成** (2026-09-30，即 M2.0，见下) |
-| **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | 🔨 切片 A–D 完成：expr 引擎（word ops）+ univ_hydro/mhd/mg/chem 包装 + registry + 容器装配；**Sod（L1(ρ)=1.3e-3）、Brio-Wu（native 逐位一致）、inflow、chem Sod（CPU）全部验证通过**（详见 §M1 进展记录） |
+| **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | ✅ **完成** (2026-10-01)：切片 A–D + 收尾（表达式扩展 tanh/rand/i,j,k、IC 通道 1/3、7 个原语配方、make bindings）；Sod/Brio-Wu/inflow/chem Sod/base_file/KH 全部验证通过 |
 | **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | ✅ M2.0–M2.5 完成（详案见 `docs/m2_plan.md`） |
 | M3 | Track B 代码生成 | ⬜ 未开始 |
 | M4 | LLM/Agent 接口 | ⬜ 未开始 |
@@ -334,15 +334,52 @@ cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
   与 CPU 逐周期一致，内能 2.4/0.16、x_H2 0.9/0.1 精确；回归 Sod
   （L1(ρ)=1.32e-3）、Brio-Wu、inflow（rho=2 精确，front x=0.299≈0.3）
   全部通过。
-- M1 余项（计划内未完成）：IC 通道 1（binary base file）与通道 3
-  （perturbation layer）、6–8 个命名 IC primitive 库、`make bindings`
-  生成 univ_proxy.gen.h（现为手写的 univ_proxy.h 替身）。
+
+### M1 收尾切片（2026-10-01）：表达式扩展 + IC 通道 + 原语 + bindings
+
+- **表达式引擎扩展**（`usr_ext/universal/expr.h`，语义真源）：
+  新函数 `tanh/sinh/cosh/erf`（1 参）与 `rand(i,j,k,seed)`（4 参，
+  splitmix64 链 `sm64(seed)→+i→+j→+k`，`(h>>11)·2⁻⁵³` ∈ [0,1)，
+  参数 llrint 为 int64，host/device/Python 逐位一致）；新变量
+  `i/j/k`（整数单元索引，序号 4–6，紧随 x,y,z,t）；IC 处 `t` =
+  `[cycle] t_0`，inflow BC 处 `t` = 当前时刻且 i/j/k = ghost 单元索引。
+  Python 端口 `core/kratos_spec/expr.py` 同步扩展；黄金向量 88→104 条
+  全部两端一致（`tests/golden/check_cpp.py`）。
+- **IC 通道 1（二进制底场文件）**：`[init] base_file = <bin>`；
+  逐块 `d.read(bio)`（`dat_3d::read` 自带尺寸校验，分辨率/布局不符
+  立即报错）；有 `[ic.*]` 区域时区域在文件状态之上**覆盖**叠加
+  （表达式读不到底场值；hydro 经 γ-law 原语回读，mhd 含 bf 回读，
+  chem_hydro 因成分依赖能量回读有歧义 → base_file 与区域并用直接
+  报错）。**验证**：sod t=0.2 末态作底场 + `x∈[0.6,0.7]` 带 rho=3
+  区域 → 带外逐位一致（max|Δ|=0.0）、带内精确 3.0、t₀=0.2 延续。
+- **IC 通道 3（扰动层）**：零新增机制 —— 扰动就是含 `rand()` 的
+  表达式（配方见 `white_noise`；区域语义为覆盖，结构性底场加噪
+  请写进同一区域表达式，见 `kh` 配方）。
+- **命名 IC 原语库** = 表达式配方而非 C++：`descriptors/ic/recipes.yaml`
+  收录 uniform / sod / briowu / kh / blast / linear_wave / white_noise
+  共 7 个；**RT 暂缓**（std_tst/rt 用带 gz 的自定义积分器，重力槽
+  属未来工作）。**验证**：kh_expr.par（tanh 剪切 + 余弦模 +
+  rand 噪声）GPU 跑通，ρ/vx 与解析 tanh 剖面误差 ≤2.3e-16，
+  扰动幅度正常。
+- **`make bindings` 代码生成**：`kratos-front bindings [outdir]` →
+  `blocklib.json`（模块块 + IC 通道 + 表达式语法 + 配方）、
+  `schema.json`（Spec IR 的 JSON Schema，x-known-sections）、
+  `univ_proxy.gen.h`（当前为 trunk `univ_proxy.h` 的生成副本 + 横幅；
+  槽位静态）、`descriptors.md`（参数参考）。语法展示真源 =
+  新增 `descriptors/expr_grammar.yaml`；`load_registry` 现跳过
+  无 `section:` 的数据 yaml。`generated/` 已入 .gitignore。
+- **回归（同一 CUDA 二进制）**：sod_univ PASSED、briowu EXIT=0、
+  chem_sod EXIT=0、legacy fallback（无 [module.*]）EXIT=0。
+  pytest 209/209（含 bindings 冒烟与 JSON Schema 校验）。
+
+- M1 余项（仍在计划外暂缓）：重力槽（RT 等需要）、chem_mhd 通用
+  包装（chem_mhd 需要反应网络，暂沿用 chem_hydro 被动模式）。
 
 ## 使用
 
 ```bash
 cd kratos_frontend
-.venv/bin/python -m pytest                 # 61 个测试
+.venv/bin/python -m pytest                 # 209 个测试
 .venv/bin/kratos-front lift  runs/a.par -o spec.json
 .venv/bin/kratos-front validate spec.json
 .venv/bin/kratos-front emit  spec.json -o runs/a.regen.par

@@ -187,12 +187,21 @@ class Registry:
 
 
 def load_registry(root: str) -> Registry:
-    """Load every ``*.yaml`` under ``root`` (recursively)."""
+    """Load every descriptor ``*.yaml`` under ``root`` (recursively).
+
+    Files without a top-level ``section:`` key are data files, not
+    section descriptors (e.g. expr_grammar.yaml, ic/recipes.yaml) and
+    are skipped.
+    """
     descriptors = []
     for dirpath, _dirnames, filenames in os.walk(root):
         for fn in sorted(filenames):
             if fn.endswith((".yaml", ".yml")) and fn != "meta.schema.yaml":
-                descriptors.append(_load_one(os.path.join(dirpath, fn)))
+                path = os.path.join(dirpath, fn)
+                with open(path, "r", encoding="utf-8") as fh:
+                    head = yaml.safe_load(fh)
+                if isinstance(head, dict) and "section" in head:
+                    descriptors.append(_load_one(path))
     return Registry(descriptors)
 
 
