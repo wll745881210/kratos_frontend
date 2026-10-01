@@ -341,10 +341,15 @@ cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
   新函数 `tanh/sinh/cosh/erf`（1 参）与 `rand(i,j,k,seed)`（4 参，
   splitmix64 链 `sm64(seed)→+i→+j→+k`，`(h>>11)·2⁻⁵³` ∈ [0,1)，
   参数 llrint 为 int64，host/device/Python 逐位一致）；新变量
-  `i/j/k`（整数单元索引，序号 4–6，紧随 x,y,z,t）；IC 处 `t` =
-  `[cycle] t_0`，inflow BC 处 `t` = 当前时刻且 i/j/k = ghost 单元索引。
+  `i/j/k` = **全局**单元索引（序号 4–6；`univ_hydro.h` 的
+  `global_ijk` = 局部索引 + llround(xf0/dx0)，IC 与 inflow BC 同一
+  约定；块布局/分辨率确定但非布局不变）；IC 处 `t` =
+  `[cycle] t_0`，inflow BC 处 `t` = 当前时刻。
   Python 端口 `core/kratos_spec/expr.py` 同步扩展；黄金向量 88→104 条
   全部两端一致（`tests/golden/check_cpp.py`）。
+  **块间独立性曾真实出错**（局部索引 → 所有块噪声逐位相同），由
+  `tools/check_rand.py` 检出并修复；方法与实测数字见
+  `docs/rand_verification.md`。
 - **IC 通道 1（二进制底场文件）**：`[init] base_file = <bin>`；
   逐块 `d.read(bio)`（`dat_3d::read` 自带尺寸校验，分辨率/布局不符
   立即报错）；有 `[ic.*]` 区域时区域在文件状态之上**覆盖**叠加
@@ -359,8 +364,8 @@ cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
   收录 uniform / sod / briowu / kh / blast / linear_wave / white_noise
   共 7 个；**RT 暂缓**（std_tst/rt 用带 gz 的自定义积分器，重力槽
   属未来工作）。**验证**：kh_expr.par（tanh 剪切 + 余弦模 +
-  rand 噪声）GPU 跑通，ρ/vx 与解析 tanh 剖面误差 ≤2.3e-16，
-  扰动幅度正常。
+  rand 噪声）GPU 跑通，初态 ρ/vx 对解析 tanh 剖面
+  max|Δ| = 7.1e-8 / 1.4e-8（PRECISION=1 的 FP32 存储下限）。
 - **`make bindings` 代码生成**：`kratos-front bindings [outdir]` →
   `blocklib.json`（模块块 + IC 通道 + 表达式语法 + 配方）、
   `schema.json`（Spec IR 的 JSON Schema，x-known-sections）、
@@ -374,6 +379,25 @@ cell/s，分布完全重叠，开销在噪声内（**<1% 验收通过**）。
 
 - M1 余项（仍在计划外暂缓）：重力槽（RT 等需要）、chem_mhd 通用
   包装（chem_mhd 需要反应网络，暂沿用 chem_hydro 被动模式）。
+
+### 混合精度纪律与 rand 修复（2026-10-01 下午）
+
+- **精度纪律**（用户明确，见 `src/types.h:12-26`）：kratos 默认
+  PRECISION=1（float_t=FP32, float2_t=FP64）；PRECISION=2 全 FP64，
+  PRECISION=0 全 FP32。规则：**一切不直接涉及守恒变量加减的量用
+  `type::float_t`**（位置、原语、冷却全程、模表、约减缓冲），
+  **只有守恒量本身及其加减用 `type::float2_t`**（ene−ke、
+  u += du、最终写回）。已全量清扫 univ_hydro/mhd/chem/inflow
+  （expr.h 引擎内部 double 属设计：double 字节码常量 + 模板化
+  eval<f_T>）。
+- 清扫后 CUDA 重建 + 全回归：sod（verify_sod PASSED）、briowu、
+  inflow、chem（608 步，x_H2 0.9/0.1）、kh（≤7.1e-8）、base_chain、
+  rand 检验全部通过。
+- **trunk pars/chem_sod_univ.par 补回 `[chemistry] Tmin = 1e-30`**
+  （此前只在 scratch 副本里有，导致 trunk 版回归时 dt 崩塌复发；
+  教训：修复必须落到权威文件，不能留在临时副本）。
+- `usr_ext/universal/univ_post.h`（冷却 + 湍流注入后处理模块）
+  已按上述精度纪律写好，尚未编译/接入 usr.cpp（M1-E 进行中）。
 
 ## 使用
 
