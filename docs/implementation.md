@@ -486,3 +486,10 @@ cd kratos_frontend
   C++ 布尔只认 0/1，提取失败保默认值）——前端校验器正确地抓住了它；
   已改为 `1` 并在教程 FAQ 中说明。输出编号语义：00000=初始，末态取最大编号。
 - 测试：228 pytest / 39 vitest。
+
+### universal pgen 语法参考文档
+
+- 新增 `docs/universal_pgen_reference.md`：容器语法（module/coupling/order/
+  role 覆盖/legacy 回退）、IC 三通道、表达式文法全文（转自 expr.h 权威注释）、
+  边界（含 `inf` expr_inflow）、六个模块的完整键表（默认值逐一对照代码核验）、
+  精度约定、错误行为、示例索引。

@@ -17,7 +17,7 @@ Design: [`docs/kratos_frontend_plan.md`](docs/kratos_frontend_plan.md).
 
 | Path | Contents |
 |---|---|
-| `docs/` | Design documents (`kratos_frontend_plan.md`, `m2_plan.md`, `implementation.md`); user guide `user_guide_turb_box.md`; housekeeping rules `regulations.md`; verified kratos facts `kratos_internals.md` |
+| `docs/` | Design documents (`kratos_frontend_plan.md`, `m2_plan.md`, `implementation.md`); user guide `user_guide_turb_box.md`; container syntax reference `universal_pgen_reference.md`; housekeeping rules `regulations.md`; verified kratos facts `kratos_internals.md` |
 | `descriptors/` | Module descriptors (YAML) — single source of truth |
 | `core/kratos_spec/` | Python package: Problem Spec model, par parser/emitter, bin reader, differ, `kratos-front` CLI |
 | `web/server/kratos_server/` | FastAPI backend (localhost, single-user) |
