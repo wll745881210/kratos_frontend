@@ -6,6 +6,8 @@ keys:
   x_max:          { type: fvec3, required: true, doc: upper corner (code units) }
   n_cell_global:  { type: ivec3, required: true, doc: total cells per direction }
   n_cell_block:   { type: ivec3, doc: cells per block (enables AMR layout) }
-  dist_mode:      { type: int,   default: 1,     doc: block distribution mode }
+  dist_mode:      { type: int,   default: 1,     doc: block distribution mode (0=default, 1=fractal) }
   geo_regenerate: { type: bool,  default: false,
                     doc: regenerate geometry instead of reading mesh_tree }
+  balance_coef:   { type: "float[]",
+                    doc: per-rank load-balance weights (padded with 1, normalized) }

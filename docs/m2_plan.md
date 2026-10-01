@@ -84,6 +84,8 @@ par 侧事实：`[mesh]`（x_min/x_max/n_cell_global/n_cell_block）+ `[refine_r
 | M2.2（约 1–1.5 周） | React Flow 框图：[module.*] 节点 + 耦合边，与 Spec 双向同步；节点属性面板复用描述符表单 | 拖出 dyn hydro + 保存 → par 含正确 [module.*] |
 | M2.3（约 1 周） | 预览窗：网格/区域/估计 AMR + IC 区域分层预览（Python expr 移植 + golden vectors） | kh.par 区域图与估计 block 图正确；IC 预览与 t=0 输出一致 |
 | M2.4（约 1 周） | .bin 输出预览（精确 AMR + 场切片）+ 项目清单/bundle + 可选运行器 | 打开 sod_univ_00000.bin 渲染正确 |
+| M2.5（已完成） | REST/CLI 收尾：bin 预览端点（vendored binary_io）+ `kratos-front bin` + OpenAPI + Docker | 容器内 health/bin/UI 冒烟通过 |
+| M2.6（已完成） | Globals 超参数视图 + 跨字段校验（unit FP32 溢出、mesh 块布局整除）+ bin 分辨率护栏 | validate 对 kpc+mp 与 512/100 布局各返回一条 error；GlobalsView 测试通过 |
 
 ## 7. 测试策略
 
@@ -124,3 +126,6 @@ par 侧事实：`[mesh]`（x_min/x_max/n_cell_global/n_cell_block）+ `[refine_r
     增加描述；`KRATOS_FRONT_DESCRIPTORS` / `KRATOS_FRONT_DIST` 环境变量
     覆盖（非 editable 安装/Docker 用）；根目录 Dockerfile 多阶段镜像
     （本机经镜像源构建并冒烟验证）。基镜像可用 build-arg 覆盖。
+11. M2.6 跨字段校验放后端 `xchecks.py`（与 trunk throw 镜像），前端只做即时
+   提示镜像（unit 派生量/FP32 范围、块布局整除）——单一权威校验仍在 server；
+   Globals 视图复用 mutate/Spec store，新增键时先确保 section 存在。

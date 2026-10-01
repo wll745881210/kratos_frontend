@@ -107,6 +107,8 @@ class Spec:
                     issues.append(Issue(
                         "error", f"{name}.{key}",
                         f"required key of section {name!r} is missing"))
+        from .xchecks import cross_validate
+        issues.extend(cross_validate(self))
         return issues
 
     # ------------------------------------------------------------------

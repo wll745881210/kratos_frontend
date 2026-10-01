@@ -106,7 +106,7 @@ function drawHeat(
 }
 
 /** BinPreviewPanel — exact AMR block list + field slice from a .bin. */
-function BinPreviewPanel() {
+function BinPreviewPanel({ spec }: { spec: Spec }) {
   const [path, setPath] = useState("");
   const [info, setInfo] = useState<BinPreview | null>(null);
   const [block, setBlock] = useState("");
@@ -167,6 +167,39 @@ function BinPreviewPanel() {
 
   const fields = info && block ? (info.fields[block] ?? []) : [];
   const nIdx = slice?.n_index ?? 1;
+
+  /* Bin-vs-spec resolution guard: compare the bin's effective root-grid
+   * resolution with the spec's [mesh] n_cell_global (level-0 bins only). */
+  const resGuard = useMemo(() => {
+    if (!info) return null;
+    const specN = meshNCell(spec);
+    if (!specN) return null;
+    if (info.blocks.some((b) => b.level !== 0))
+      return {
+        kind: "info" as const,
+        text: "AMR bin (blocks at level > 0) — resolution comparison skipped.",
+      };
+    const lo = [Infinity, Infinity, Infinity];
+    const hi = [-Infinity, -Infinity, -Infinity];
+    let dx: number[] | null = null;
+    for (const b of info.blocks) {
+      dx = dx ?? b.dx0;
+      for (let a = 0; a < 3; a++) {
+        lo[a] = Math.min(lo[a], b.xf0[a]);
+        hi[a] = Math.max(hi[a], b.xf0[a] + b.n_cell[a] * b.dx0[a]);
+      }
+    }
+    if (!dx) return null;
+    const binN = [0, 1, 2].map((a) =>
+      dx![a] > 0 ? Math.round((hi[a] - lo[a]) / dx![a]) : specN[a],
+    );
+    const same = binN.every((v, a) => v === specN[a]);
+    if (same) return null;
+    return {
+      kind: "warn" as const,
+      text: `bin resolution ${binN.join("×")} ≠ spec [mesh] n_cell_global ${specN.join("×")}`,
+    };
+  }, [info, spec]);
 
   return (
     <div className="previewpane">
@@ -272,6 +305,11 @@ function BinPreviewPanel() {
         </ul>
       )}
       {status && <p className="hint">{status}</p>}
+      {resGuard && (
+        <p className={resGuard.kind === "warn" ? "issue error" : "hint"}>
+          {resGuard.text}
+        </p>
+      )}
     </div>
   );
 }
@@ -336,7 +374,7 @@ export function PreviewView({ spec }: Props) {
             </button>
           </div>
         </div>
-        <BinPreviewPanel />
+        <BinPreviewPanel spec={spec} />
       </div>
     );
   }

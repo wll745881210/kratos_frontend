@@ -9,7 +9,7 @@
 | **M0** | 描述符目录 + `make bindings` + Spec→par CLI | ✅ **完成** (2026-09-30) |
 | M0.5 | REST/CLI 骨架 (FastAPI) | ✅ **完成** (2026-09-30，即 M2.0，见下) |
 | **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | ✅ **完成** (2026-10-01)：切片 A–D + 收尾（表达式扩展 tanh/rand/i,j,k、IC 通道 1/3、7 个原语配方、make bindings）；Sod/Brio-Wu/inflow/chem Sod/base_file/KH 全部验证通过 |
-| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | ✅ M2.0–M2.5 完成（详案见 `docs/m2_plan.md`） |
+| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | ✅ M2.0–M2.6 完成（详案见 `docs/m2_plan.md`） |
 | M3 | Track B 代码生成 | ⬜ 未开始 |
 | M4 | LLM/Agent 接口 | ⬜ 未开始 |
 
@@ -227,6 +227,20 @@ web/client/src/components/ProjectDialog.tsx   # 编辑器 "Project…" 对话框
   `kratos_spec.vendor`（+ vendor/`__init__.py`）。
 - 测试：pytest **188/188**（+6 binread、+4 preview/bin 服务端）；vitest 33/33；
   测试 fixture `tests/fixtures/sod_univ_00000.bin`（Sod 末态 t=0.2，42 KB）。
+
+## M2.6 交付物（超参数视图与跨字段校验）
+
+- `core/kratos_spec/xchecks.py`：`Spec.validate()` 末尾追加跨字段校验，与 trunk
+  throw 镜像（mesh 整除/零尺寸/退化轴跳过/n_dim 规则、n_cell_block 缺省规则；
+  unit FP32 溢出 error / 下溢 warning，因 `unit_t<float_t>`）。
+- 描述文件：`core/mesh.yaml` +`balance_coef`；`core/unit.yaml` 修正必填性并补
+  `mass`（trunk：存在 mass 用 mass 否则 density，length/time 默认 1）。
+- client：`views/GlobalsView.tsx`（Globals 标签页，编辑器首个标签页）——[unit]
+  density/mass 锚切换、派生量与 FP32 溢出内联预警；[mesh] `n_cell_block` 块布局
+  （派生块数 + 内联整除错误）、`dist_mode`、`geo_regenerate`；[cycle]；[device]。
+  bin 预览加分辨率护栏（level-0-only bin 与 spec `n_cell_global` 不符时警告）。
+- 测试：vitest 39/39（GlobalsView 6 项）；pytest 219/219；validate 端点实测
+  kpc+mp 与 512/100 布局各返回一条 error。
 
 ## M1 进展记录（usr_ext/universal，在 kratos 仓库内）
 

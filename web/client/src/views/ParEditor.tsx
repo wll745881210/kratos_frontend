@@ -14,8 +14,9 @@ import {
 import type { Issue, SectionDescriptor, Spec, Value } from "../model/types";
 import { DiagramView } from "./DiagramView";
 import { PreviewView } from "./PreviewView";
+import { GlobalsView } from "./GlobalsView";
 
-type Tab = "form" | "text" | "diagram" | "preview";
+type Tab = "globals" | "form" | "text" | "diagram" | "preview";
 
 const NEW_TEMPLATE = `[mesh]
 x_min = 0 0 0
@@ -272,6 +273,12 @@ export function ParEditor({
         />
         <div className="tabs">
           <button
+            className={tab === "globals" ? "on" : ""}
+            onClick={() => switchTab("globals")}
+          >
+            Globals
+          </button>
+          <button
             className={tab === "form" ? "on" : ""}
             onClick={() => switchTab("form")}
           >
@@ -300,6 +307,10 @@ export function ParEditor({
       </div>
 
       {!spec && <div className="empty">Open a .par file or create a new one.</div>}
+
+      {spec && tab === "globals" && (
+        <GlobalsView spec={spec} mutate={mutate} issues={issues} />
+      )}
 
       {spec && tab === "form" && (
         <div className="columns">
