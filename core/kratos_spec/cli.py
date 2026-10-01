@@ -20,6 +20,12 @@ from .descriptors import load_default
 from .diff import diff_par
 from .parfile import load_par, parse_par
 from .spec import Spec
+from .descriptors import DescriptorError
+
+
+class CliError(Exception):
+    """User-facing CLI error: printed to stderr, exit code 2."""
+
 
 
 def _cmd_lift(args) -> int:
@@ -37,7 +43,16 @@ def _cmd_lift(args) -> int:
 
 def _load_spec(path: str) -> Spec:
     with open(path, "r", encoding="utf-8") as fh:
-        return Spec.from_json(fh.read())
+        text = fh.read()
+    try:
+        if text.lstrip().startswith("{"):
+            return Spec.from_json(text)
+        # otherwise treat as a par file (lift on the fly)
+        from .parfile import parse_par
+
+        return Spec.from_par(parse_par(text))
+    except (ValueError, DescriptorError) as e:
+        raise CliError(f"{path}: {e}") from e
 
 
 def _cmd_emit(args) -> int:
@@ -305,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=_cmd_emit)
 
-    p = sub.add_parser("validate", help="validate a Spec")
+    p = sub.add_parser("validate", help="validate a Spec (JSON) or par file")
     p.add_argument("spec")
     p.set_defaults(func=_cmd_validate)
 
@@ -365,7 +380,11 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=_cmd_bin)
 
     args = ap.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except CliError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

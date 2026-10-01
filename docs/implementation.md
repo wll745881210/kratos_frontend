@@ -473,3 +473,16 @@ cd kratos_frontend
 - 实例化矩阵 ≤ 8–12 组（riemann×recon×integ）；
 - 性能基准：纯 hydro 双 vs 原生 pgen 差 < 1%；
 - 用容器语法跑通 `usr_ext/cmz` 的 `prob::run` 语义。
+
+### 用户文档与 CLI 打磨（M4 验收方向的第一步）
+
+- 新增 `docs/user_guide_turb_box.md`：端到端教程（构建→校验→运行→检查），
+  所有参考数字来自实际验证运行（32×16×16, 140 cycles, 0.037 s,
+  v_rms=2.4539, KE=2.6551, ρ∈[0.1058,5.4208]）；配套示例
+  `usr_ext/universal/pars/turb_box.par`（trunk，已跑通）。
+- CLI 改进：`validate`/`emit` 现在直接接受 **par 文件**（首字符非 `{` 时
+  自动 lift）；解析/类型错误打印 `error: ...` 并返回 2，不再是 traceback。
+- 发现并修正：示例 par 中 `final_output = true` 是**静默无效**的（kratos
+  C++ 布尔只认 0/1，提取失败保默认值）——前端校验器正确地抓住了它；
+  已改为 `1` 并在教程 FAQ 中说明。输出编号语义：00000=初始，末态取最大编号。
+- 测试：228 pytest / 39 vitest。
