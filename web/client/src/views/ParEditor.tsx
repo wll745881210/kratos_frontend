@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { FileBrowser } from "../components/FileBrowser";
+import { ProjectDialog } from "../components/ProjectDialog";
 import { IssuesPanel } from "../components/IssuesPanel";
 import { SectionCard } from "../components/SectionCard";
 import { TextEditor } from "../components/TextEditor";
@@ -62,6 +63,7 @@ export function ParEditor({
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState("");
   const [browsing, setBrowsing] = useState(false);
+  const [showProject, setShowProject] = useState(false);
   const [newSection, setNewSection] = useState("");
   const saveAs = useRef<HTMLInputElement>(null);
 
@@ -257,6 +259,9 @@ export function ParEditor({
         <button onClick={save} disabled={!spec}>
           Save{dirty ? "*" : ""}
         </button>
+        <button onClick={() => setShowProject(true)} disabled={!path}>
+          Project…
+        </button>
         <input
           ref={saveAs}
           className="path"
@@ -354,7 +359,20 @@ export function ParEditor({
       {spec && tab === "diagram" && (
         <div className="columns">
           <div className="diagrampane">
-            <DiagramView spec={spec} ops={diagramOps} />
+            <DiagramView
+              key={path ?? "new"}
+              spec={spec}
+              ops={diagramOps}
+              positions={(spec.meta?.diagram_positions as
+                | Record<string, { x: number; y: number }>
+                | undefined) ?? undefined}
+              onPositions={(pos) => {
+                mutate((s) => {
+                  s.meta.diagram_positions = pos;
+                  return s;
+                });
+              }}
+            />
           </div>
           <div className="side">
             <IssuesPanel issues={issues} />
@@ -378,6 +396,18 @@ export function ParEditor({
           initialDir={path ? path.replace(/\/[^/]*$/, "") : "/"}
           onPick={openFile}
           onClose={() => setBrowsing(false)}
+        />
+      )}
+
+      {showProject && path && (
+        <ProjectDialog
+          path={path}
+          currentText={async () => {
+            if (tab === "text") return text;
+            const r = await api.emitPar(spec!);
+            return r.text;
+          }}
+          onClose={() => setShowProject(false)}
         />
       )}
     </div>

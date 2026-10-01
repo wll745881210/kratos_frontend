@@ -35,7 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from kratos_spec.descriptors import load_default
-from kratos_spec import ic_eval
+from kratos_spec import bundle, ic_eval, project
 from kratos_spec.parfile import parse_par
 from kratos_spec.spec import Spec
 
@@ -95,6 +95,32 @@ class PreviewIcRequest(BaseModel):
     axis: int = 2
     index: Optional[int] = None
     max_dim: int = 384
+
+
+class ProjectInitRequest(BaseModel):
+    dir: str
+    text: Optional[str] = None  # par text; default minimal mesh+cycle
+    arch: str = ""
+
+
+class ProjectSaveRequest(BaseModel):
+    dir: str
+    manifest: dict
+
+
+class DirRequest(BaseModel):
+    dir: str
+
+
+class BundleExportRequest(BaseModel):
+    dir: str
+    out: Optional[str] = None
+
+
+class BundleImportRequest(BaseModel):
+    bundle: str
+    dir: str
+    override: Optional[dict] = None
 
 
 # ----------------------------------------------------------------------
@@ -190,6 +216,61 @@ def create_app(allowed_roots: list[str] | None = None) -> FastAPI:
     @app.get("/api/app/cwd")
     def app_cwd():
         return {"cwd": os.getcwd(), "roots": list(roots)}
+
+    # ---- project / bundle (M2.4) -----------------------------------------
+
+    @app.post("/api/project/init")
+    def project_init(req: ProjectInitRequest):
+        d = resolve_allowed(req.dir, roots)
+        os.makedirs(d, exist_ok=True)
+        text = req.text or ("[mesh]\nx_min = 0 0 0\nx_max = 1 1 1\n"
+                            "n_cell_global = 64 64 1\n\n"
+                            "[cycle]\nt_lim = 0.1\ndt_init = 1e-4\n")
+        spec = Spec.from_par_text(text, load_default())
+        m = project.new_manifest(spec, arch=req.arch)
+        project.save_manifest(d, m)
+        snap = os.path.join(d, m["par_snapshot"])
+        with open(snap, "w", encoding="utf-8") as fh:
+            fh.write(project.regenerate_par(m, load_default()))
+        return {"dir": d, "manifest": m}
+
+    @app.get("/api/project/load")
+    def project_load(dir: str = Query(...)):
+        d = resolve_allowed(dir, roots)
+        if not project.is_project(d):
+            raise HTTPException(404, f"not a kratos project: {dir!r}")
+        return {"dir": d, "manifest": project.load_manifest(d)}
+
+    @app.post("/api/project/save")
+    def project_save(req: ProjectSaveRequest):
+        d = resolve_allowed(req.dir, roots)
+        if not project.is_project(d):
+            raise HTTPException(404, f"not a kratos project: {req.dir!r}")
+        project.save_manifest(d, req.manifest)
+        return {"dir": d, "saved": True}
+
+    @app.post("/api/project/check")
+    def project_check(req: DirRequest):
+        d = resolve_allowed(req.dir, roots)
+        if not project.is_project(d):
+            raise HTTPException(404, f"not a kratos project: {req.dir!r}")
+        m = project.load_manifest(d)
+        issues = (project.verify_assets(d, m)
+                  + project.check_par_snapshot(d, m, load_default()))
+        return {"dir": d, "issues": issues}
+
+    @app.post("/api/bundle/export")
+    def bundle_export(req: BundleExportRequest):
+        d = resolve_allowed(req.dir, roots)
+        out = resolve_allowed(req.out, roots) if req.out else None
+        return {"bundle": bundle.export_bundle(d, out)}
+
+    @app.post("/api/bundle/import")
+    def bundle_import(req: BundleImportRequest):
+        b = resolve_allowed(req.bundle, roots)
+        d = resolve_allowed(req.dir, roots)
+        issues = bundle.import_bundle(b, d, load_default(), req.override)
+        return {"dir": d, "issues": issues}
 
     @app.post("/api/app/set-cwd")
     def app_set_cwd(req: SetCwdRequest):

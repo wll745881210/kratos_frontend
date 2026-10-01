@@ -159,3 +159,56 @@ def test_app_cwd_reports_roots(client):
     assert r.status_code == 200
     assert os.path.isdir(r.json()["cwd"])
     assert isinstance(r.json()["roots"], list)
+
+
+# ---------------------------------------------------------------------------
+# project / bundle endpoints (M2.4)
+# ---------------------------------------------------------------------------
+
+
+def test_project_lifecycle(client, tmp_path):
+    d = str(tmp_path / "proj")
+    r = client.post("/api/project/init",
+                    json={"dir": d,
+                          "text": "[mesh]\nx_min = 0 0 0\nx_max = 1 1 1\n"
+                                  "n_cell_global = 32 4 1\n\n"
+                                  "[cycle]\nt_lim = 0.1\ndt_init = 1e-4\n"})
+    assert r.status_code == 200
+    assert r.json()["manifest"]["$schema"] == "kratos.project/v1"
+
+    r = client.get("/api/project/load", params={"dir": d})
+    assert r.status_code == 200
+    m = r.json()["manifest"]
+    assert m["spec"]["sections"]["mesh"]["n_cell_global"] == [32, 4, 1]
+
+    r = client.post("/api/project/check", json={"dir": d})
+    assert r.json()["issues"] == []
+
+    m["ui"]["diagram_positions"] = {"flow": {"x": 1, "y": 2}}
+    r = client.post("/api/project/save", json={"dir": d, "manifest": m})
+    assert r.json()["saved"] is True
+    r = client.get("/api/project/load", params={"dir": d})
+    assert r.json()["manifest"]["ui"]["diagram_positions"]["flow"]["x"] == 1
+
+
+def test_project_load_404(client, tmp_path):
+    r = client.get("/api/project/load", params={"dir": str(tmp_path)})
+    assert r.status_code == 404
+
+
+def test_bundle_endpoints(client, tmp_path):
+    d = str(tmp_path / "proj")
+    client.post("/api/project/init", json={"dir": d})
+    r = client.post("/api/bundle/export", json={"dir": d})
+    assert r.status_code == 200
+    bpath = r.json()["bundle"]
+    assert bpath.endswith(".tar.gz")
+
+    dest = str(tmp_path / "imp")
+    r = client.post("/api/bundle/import",
+                    json={"bundle": bpath, "dir": dest,
+                          "override": {"mesh": {"n_cell_global": [128, 4, 1]}}})
+    assert r.status_code == 200
+    r = client.get("/api/project/load", params={"dir": dest})
+    assert (r.json()["manifest"]["spec"]["sections"]["mesh"]
+            ["n_cell_global"] == [128, 4, 1])

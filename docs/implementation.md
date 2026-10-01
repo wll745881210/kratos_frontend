@@ -9,7 +9,7 @@
 | **M0** | 描述符目录 + `make bindings` + Spec→par CLI | ✅ **完成** (2026-09-30) |
 | M0.5 | REST/CLI 骨架 (FastAPI) | ✅ **完成** (2026-09-30，即 M2.0，见下) |
 | **M1** | `usr_ext/universal`（注册表 + 角色 + 接线 + 表达式 + IC + inflow BC） | 🔨 切片 A–D 完成：expr 引擎（word ops）+ univ_hydro/mhd/mg/chem 包装 + registry + 容器装配；**Sod（L1(ρ)=1.3e-3）、Brio-Wu（native 逐位一致）、inflow、chem Sod（CPU）全部验证通过**（详见 §M1 进展记录） |
-| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0–M2.3 完成（详案见 `docs/m2_plan.md`）；剩 M2.4 项目/打包 |
+| **M2** | 图形编辑器 + 项目文件 + Canvas2D 预览 | 🔨 M2.0–M2.4 完成（详案见 `docs/m2_plan.md`） |
 | M3 | Track B 代码生成 | ⬜ 未开始 |
 | M4 | LLM/Agent 接口 | ⬜ 未开始 |
 
@@ -127,7 +127,8 @@ tests: vitest 31/31（graph 9 + DiagramView 4 + 旧 18）；tsc + vite build cle
 - 边：`parasite` 虚线独占边（唯一目标）；其余键=命名 slot，值为角色列表。
 - 角色语义与 C++ `registry.h` 严格一致：裸 `[module]` → role `""`（与裸
   `[coupling]` 配对）；前端改图只写回 Spec，服务端 parse/emit 仍为权威。
-- 布局为列式自动布局，**不持久化节点坐标**（留给 M2.4 项目文件）；`[ic.*]`
+- 布局为列式自动布局；**拖拽后的节点坐标持久化到 `spec.meta.diagram_positions`**
+  （M2.4 实装，`onNodeDragStop` 时整体写回，emit par 时随 meta 序列化）；`[ic.*]`
   等区域节点不进图（在表单页编辑）。
 - 实测：构建产物含 reactflow；`/api/par/parse` 解析 `chem_sod_univ.par` 得到
   `module.flow(type=chem_hydro)`/`module.chem`/`coupling.chem(parasite=flow)`
@@ -164,6 +165,35 @@ tests/test_expr.py (89) + tests/test_ic_eval.py (11)
 - 实测：`sod_univ.par` 经 parse → preview 得到 rho 1.0|0.125、pre 1.0|0.1
   的 Sod 初态；`chem_sod_univ.par` 物种通道可预览。
 - 测试：vitest 33/33（含 PreviewView 2 个 jsdom 冒烟）；pytest 164/164。
+
+## M2.4 交付物（项目文件 + bundle + 图布局持久化）
+
+```
+core/kratos_spec/project.py          # kratos.project.json manifest
+                                     # （$schema=kratos.project/v1：spec、
+                                     #  environment、provenance、assets、runs、
+                                     #  overridable、par_snapshot、ui）
+core/kratos_spec/bundle.py           # tar.gz bundle 导出/导入 +
+                                     #  JSON Merge Patch 白名单 override
+web/server/kratos_server/app.py      # /api/project/{init,save,check}
+                                     #  /api/bundle/{export,import}
+web/client/src/components/ProjectDialog.tsx   # 编辑器 "Project…" 对话框
+                                     # （init/save/check/export/import +
+                                     #  override JSON 文本框）
+```
+
+- 项目 = 目录 + manifest；`init` 接受 par 文本（`text` 字段），`save` 重生成
+  par 快照，`check` 校验 manifest/par 一致性。
+- bundle：tar.gz 打包 manifest + assets；`import` 支持 scale override
+  （JSON Merge Patch，仅白名单键如 `mesh.n_cell_global`，服务端强制）。
+- 实测（curl 全流程）：init（从 sod.par 文本解析出 n_cell_global=[512,2,1]）
+  → export → import（override → [256,2,1]，issues 为空）→ check 通过。
+  注意 init 的字段是 `text` 不是 `par_path`（我的第一次 curl 传错字段，
+  得到默认最小 spec 64,64,1——服务端行为正确，调用方传错）。
+- 图布局持久化：React Flow `onNodesChange` 追踪 position/remove 变更 +
+  `onNodeDragStop` 写回 `spec.meta.diagram_positions`；重新打开时优先使用
+  持久化坐标，否则回退列式自动布局。
+- 测试：vitest 33/33；pytest 178/178。
 
 ## M1 进展记录（usr_ext/universal，在 kratos 仓库内）
 

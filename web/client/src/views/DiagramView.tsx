@@ -11,6 +11,7 @@ import ReactFlow, {
   type Edge,
   Handle,
   type Node,
+  type NodeChange,
   type NodeProps,
   Position,
 } from "reactflow";
@@ -111,18 +112,43 @@ function layout(g: Graph): { nodes: Node<NodeData>[]; edges: Edge[] } {
 export function DiagramView({
   spec,
   ops,
+  positions,
+  onPositions,
 }: {
   spec: Parameters<typeof specToGraph>[0];
   ops: DiagramOps;
+  /** Saved node positions (spec.meta.diagram_positions); read once at mount. */
+  positions?: Record<string, { x: number; y: number }>;
+  /** Called after a drag ends with the full position map (for persistence). */
+  onPositions?: (p: Record<string, { x: number; y: number }>) => void;
 }) {
   const graph = useMemo(() => specToGraph(spec), [spec]);
-  const { nodes, edges } = useMemo(() => layout(graph), [graph]);
+  const { nodes: laidOut, edges } = useMemo(() => layout(graph), [graph]);
+  // Local drag state; initialised from persisted positions, layout otherwise.
+  const [pos, setPos] = useState<Record<string, { x: number; y: number }>>(
+    () => ({ ...(positions ?? {}) }),
+  );
+  const nodes = useMemo(
+    () => laidOut.map((n) => ({ ...n, position: pos[n.id] ?? n.position })),
+    [laidOut, pos],
+  );
   const [pending, setPending] = useState<Connection | null>(null);
   const [slotName, setSlotName] = useState("");
   const [newRole, setNewRole] = useState("");
   const [newType, setNewType] = useState<string>(MODULE_TYPES[0]);
 
   const onConnect = useCallback((c: Connection) => setPending(c), []);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setPos((p) => {
+      const next = { ...p };
+      for (const c of changes) {
+        if (c.type === "position" && c.position) next[c.id] = c.position;
+        if (c.type === "remove") delete next[c.id];
+      }
+      return next;
+    });
+  }, []);
 
   const commitPending = (key: string) => {
     if (!pending?.source || !pending.target || !key.trim()) return;
@@ -176,6 +202,16 @@ export function DiagramView({
         edges={edges}
         nodeTypes={nodeTypes}
         onConnect={onConnect}
+        onNodesChange={onNodesChange}
+        onNodeDragStop={() => {
+          if (onPositions) {
+            const out: Record<string, { x: number; y: number }> = {};
+            nodes.forEach((n) => {
+              out[n.id] = n.position;
+            });
+            onPositions(out);
+          }
+        }}
         onNodesDelete={(ns) =>
           ns.forEach((n) => {
             if (n.id.startsWith("module:")) {

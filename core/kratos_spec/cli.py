@@ -178,6 +178,73 @@ def _cmd_open(args) -> int:
     return 0
 
 
+def _cmd_project_init(args) -> int:
+    """Create a project directory with a kratos.project.json manifest."""
+    import os
+
+    from .descriptors import load_default
+    from .project import (new_manifest, regenerate_par, save_manifest)
+    from .spec import Spec
+
+    d = os.path.abspath(args.dir)
+    os.makedirs(d, exist_ok=True)
+    reg = load_default()
+    if args.from_par:
+        with open(args.from_par, encoding="utf-8") as f:
+            spec = Spec.from_par_text(f.read(), reg)
+    else:
+        spec = Spec.from_par_text(
+            "[mesh]\nx_min = 0 0 0\nx_max = 1 1 1\n"
+            "n_cell_global = 64 64 1\n"
+            "\n[cycle]\nt_lim = 0.1\ndt_init = 1e-4\n", reg)
+    m = new_manifest(spec, arch=args.arch)
+    save_manifest(d, m)
+    with open(os.path.join(d, m["par_snapshot"]), "w",
+              encoding="utf-8") as f:
+        f.write(regenerate_par(m, reg))
+    print(os.path.join(d, "kratos.project.json"))
+    return 0
+
+
+def _cmd_project_check(args) -> int:
+    """Validate manifest + asset checksums + par snapshot diff."""
+    from .descriptors import load_default
+    from .project import (check_par_snapshot, load_manifest, verify_assets)
+
+    reg = load_default()
+    m = load_manifest(args.dir)
+    issues = verify_assets(args.dir, m) + check_par_snapshot(args.dir, m, reg)
+    for i in issues:
+        print(f"{i['level']}: [{i['where']}] {i['message']}")
+    if not issues:
+        print("PROJECT OK")
+    return 1 if any(i["level"] == "error" for i in issues) else 0
+
+
+def _cmd_bundle_export(args) -> int:
+    from .bundle import export_bundle
+
+    print(export_bundle(args.dir, args.out))
+    return 0
+
+
+def _cmd_bundle_import(args) -> int:
+    import json
+
+    from .bundle import import_bundle
+    from .descriptors import load_default
+
+    patch = None
+    if args.override:
+        with open(args.override, encoding="utf-8") as f:
+            patch = json.load(f)
+    issues = import_bundle(args.bundle, args.dir, load_default(), patch)
+    for i in issues:
+        print(f"{i['level']}: [{i['where']}] {i['message']}")
+    print(f"imported to {args.dir}")
+    return 1 if any(i["level"] == "error" for i in issues) else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="kratos-front",
                                  description=__doc__)
@@ -219,6 +286,29 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int, default=8620)
     p.add_argument("--no-browser", action="store_true")
     p.set_defaults(func=_cmd_open)
+
+    p = sub.add_parser("project", help="project directory operations")
+    psub = p.add_subparsers(dest="subcmd", required=True)
+    pi = psub.add_parser("init", help="create a project directory")
+    pi.add_argument("dir")
+    pi.add_argument("--from", dest="from_par")
+    pi.add_argument("--arch", default="")
+    pi.set_defaults(func=_cmd_project_init)
+    pc = psub.add_parser("check", help="verify manifest/assets/snapshot")
+    pc.add_argument("dir")
+    pc.set_defaults(func=_cmd_project_check)
+
+    p = sub.add_parser("bundle", help="tar.gz bundle export/import")
+    bsub = p.add_subparsers(dest="subcmd", required=True)
+    be = bsub.add_parser("export", help="pack a project directory")
+    be.add_argument("dir")
+    be.add_argument("-o", "--out")
+    be.set_defaults(func=_cmd_bundle_export)
+    bi = bsub.add_parser("import", help="unpack + verify + optional rescale")
+    bi.add_argument("bundle")
+    bi.add_argument("dir")
+    bi.add_argument("--override", help="JSON Merge Patch file (whitelisted)")
+    bi.set_defaults(func=_cmd_bundle_import)
 
     args = ap.parse_args(argv)
     return args.func(args)

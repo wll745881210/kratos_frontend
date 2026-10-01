@@ -75,4 +75,38 @@ export const api = {
       ...(index !== undefined ? { index } : {}),
       ...(maxDim !== undefined ? { max_dim: maxDim } : {}),
     }),
+
+  // ---- project / bundle (M2.4) ----
+  projectInit: (dir: string, text?: string, arch?: string) =>
+    post<{ dir: string; manifest: Record<string, unknown> }>(
+      "/api/project/init",
+      { dir, ...(text !== undefined ? { text } : {}), ...(arch ? { arch } : {}) },
+    ),
+
+  projectLoad: (dir: string) =>
+    req<{ dir: string; manifest: Record<string, unknown> }>(
+      `/api/project/load?dir=${encodeURIComponent(dir)}`,
+    ),
+
+  projectSave: (dir: string, manifest: Record<string, unknown>) =>
+    post<{ dir: string; saved: boolean }>("/api/project/save", {
+      dir,
+      manifest,
+    }),
+
+  projectCheck: (dir: string) =>
+    post<{ dir: string; issues: Issue[] }>("/api/project/check", { dir }),
+
+  bundleExport: (dir: string, out?: string) =>
+    post<{ bundle: string }>("/api/bundle/export", {
+      dir,
+      ...(out ? { out } : {}),
+    }),
+
+  bundleImport: (bundle: string, dir: string, override?: unknown) =>
+    post<{ dir: string; issues: Issue[] }>("/api/bundle/import", {
+      bundle,
+      dir,
+      ...(override ? { override } : {}),
+    }),
 };
