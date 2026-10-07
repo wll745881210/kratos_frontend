@@ -230,3 +230,160 @@ def test_role_with_dot_error():
     }))
     assert any(l == "error" and "must not contain '.'" in m
                for l, w, m in msgs)
+
+
+# ---------------------------------------------------------------------------
+# CGS suffix keys (univ_unit.h mirror)
+# ---------------------------------------------------------------------------
+
+UNIT = {"length": "1e18", "time": "1e10", "density": "1e-24"}
+# rho0=1e-24, ene0=1e-8, vel0=1e8, edot0=1e6 (l0^2/t0^3), bfac=3.5449e-4
+
+
+def test_cgs_requires_unit():
+    msgs = _msgs(_spec_with({
+        "module": {"type": "hydro"},
+        "init": {"rho0_cgs": "1.0e-24"},
+    }))
+    assert any(l == "error" and w == "init"
+               and "require a [unit] section" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_init_exclusive():
+    msgs = _msgs(_spec_with({
+        "module": {"type": "hydro"},
+        "unit": UNIT,
+        "init": {"rho0": "1", "rho0_cgs": "1.0e-24"},
+    }))
+    assert any(l == "error" and "mutually exclusive" in m
+               and "'rho0' and 'rho0_cgs'" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_chem_T0_vs_pre0():
+    msgs = _msgs(_spec_with({
+        "module": {"type": "chem_hydro"},
+        "unit": UNIT,
+        "init": {"rho0_cgs": "1e-24", "T0": "100",
+                 "pre0_cgs": "1e-9"},
+    }))
+    assert any(l == "error" and "T0" in m and "pressure specification" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_ic_region_exclusive():
+    msgs = _msgs(_spec_with({
+        "module": {"type": "hydro"},
+        "unit": UNIT,
+        "ic.left": {"rho": "1", "rho_cgs": "1e-24"},
+    }))
+    assert any(l == "error" and w == "ic.left"
+               and "'rho' and 'rho_cgs' are mutually exclusive" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_inflow_exclusive():
+    msgs = _msgs(_spec_with({
+        "module": {"type": "hydro"},
+        "unit": UNIT,
+        "bc.expr_inflow": {"rho": "1", "rho_cgs": "1e-24"},
+    }))
+    assert any(l == "error" and w == "bc.expr_inflow"
+               and "mutually exclusive" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_edot_exclusive():
+    msgs = _msgs(_spec_with({
+        "module.subgrid": {"type": "post"},
+        "module": {"type": "hydro"},
+        "unit": UNIT,
+        "post.turb": {"edot": "0.1", "edot_cgs": "1e5"},
+        "coupling.subgrid": {"dyn": ""},
+    }))
+    assert any(l == "error" and w == "post.turb"
+               and "'edot' and 'edot_cgs' are mutually exclusive" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_unknown_channel_warns():
+    msgs = _msgs(_spec_with({
+        "module": {"type": "hydro"},
+        "unit": UNIT,
+        "ic.left": {"foo_cgs": "1"},
+    }))
+    assert any(l == "warning" and "not a known channel" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_code_unit_edge_warning():
+    # 1e-61 / 1e-24 = 1e-37: within 3 orders of the float32
+    # subnormal edge (1.2e-38) -> warning
+    msgs = _msgs(_spec_with({
+        "module": {"type": "hydro"},
+        "unit": UNIT,
+        "init": {"rho0_cgs": "1.0e-61"},
+    }))
+    assert any(l == "warning" and "float32 dynamic-range edge" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_code_unit_overflow_error():
+    # 1e16 / 1e-24 = 1e40 > 3.4e38 -> error
+    msgs = _msgs(_spec_with({
+        "module": {"type": "hydro"},
+        "unit": UNIT,
+        "init": {"rho0_cgs": "1.0e16"},
+    }))
+    assert any(l == "error" and "overflows float32" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_clean_passes():
+    msgs = _msgs(_spec_with({
+        "module": {"type": "hydro"},
+        "unit": UNIT,
+        "init": {"rho0_cgs": "1.0e-24", "pre0_cgs": "1.0e-8",
+                 "vel0_cgs": "1.0e8"},
+        "ic.left": {"rho_cgs": "1.0e-24"},
+        "post.turb": {"edot_cgs": "1.0e5"},
+    }))
+    # module '' hydro + undeclared... post.turb global without a post
+    # module only triggers the generic unknown-section path, not cgs
+    assert not [m for m in msgs
+                if "cgs" in m[2].lower() or "unit" in m[1].lower()]
+
+
+def test_cgs_scoped_sections():
+    msgs = _msgs(_spec_with({
+        "module.fl": {"type": "hydro"},
+        "fl.unit": UNIT,
+        "fl.ic.left": {"rho": "1", "rho_cgs": "1e-24"},
+    }))
+    assert any(l == "error" and w == "fl.ic.left"
+               and "mutually exclusive" in m
+               for l, w, m in msgs)
+    # [fl.unit] is consumed by the module (in its section list)
+    assert not any("not consumed" in m and w == "fl.unit"
+                   for l, w, m in msgs)
+
+
+def test_cgs_scoped_requires_unit():
+    msgs = _msgs(_spec_with({
+        "module.fl": {"type": "hydro"},
+        "fl.init": {"rho0_cgs": "1e-24"},
+    }))
+    assert any(l == "error" and w == "fl.init"
+               and "require a [unit] section" in m
+               for l, w, m in msgs)
+
+
+def test_cgs_scales_values():
+    from kratos_spec.xchecks import cgs_scales
+    sc = cgs_scales(mk({"unit": UNIT}))
+    assert sc["rho"] == pytest.approx(1e-24)
+    assert sc["pre"] == pytest.approx(1e-8, rel=1e-15)
+    assert sc["vel"] == pytest.approx(1e8)
+    assert sc["edot"] == pytest.approx(1e6, rel=1e-15)
+    assert abs(sc["b"] / 3.5449077018110314e-4 - 1) < 1e-12

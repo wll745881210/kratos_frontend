@@ -55,13 +55,17 @@ def _load_yaml(path: Path) -> Any:
 # mesh-level role scoping the GUI writes these as [R.<section>] for a
 # module instantiated with role R (see univ_mesh.h scoped_input).
 _MODULE_TYPES: List[Dict[str, Any]] = [
-    {"type": "hydro", "sections": ["dynamics", "init", "ic.*"]},
-    {"type": "mhd", "sections": ["dynamics", "init", "ic.*"]},
+    {"type": "hydro",
+     "sections": ["dynamics", "init", "ic.*", "unit",
+                  "bc.expr_inflow"]},
+    {"type": "mhd", "sections": ["dynamics", "init", "ic.*", "unit"]},
     {"type": "chem_hydro",
-     "sections": ["dynamics", "init", "ic.*", "species_init"]},
+     "sections": ["dynamics", "init", "ic.*", "species_init",
+                  "chemistry", "unit"]},
     {"type": "chemistry", "sections": ["chemistry"]},
     {"type": "multigrid", "sections": ["multigrid"]},
-    {"type": "post", "sections": ["post", "post.cooling", "post.turb"]},
+    {"type": "post",
+     "sections": ["post", "post.cooling", "post.turb", "unit"]},
 ]
 
 # Coupling capabilities (registry.h + couplable.h).  'parasite' is

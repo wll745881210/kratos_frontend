@@ -24,10 +24,47 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from . import expr
 from .spec import Issue, Spec
+from .xchecks import CGS_MP, cgs_scales
 
 # Channels in stable display order; x.* appended dynamically.
 _BASE_CHANNELS = ["rho", "pre", "vel_x", "vel_y", "vel_z"]
 _B_CHANNELS = ["b_x", "b_y", "b_z"]
+
+# phys::cgs constants (src/utilities/phys/constants.h)
+KB_CGS = 1.38065e-16
+CGS_ME = 9.10938e-28
+CGS_MA = 1.66054e-24
+
+# Element masses (amu) mirroring periodic.cpp (first 30 + "Z" metal).
+_ELEM_MASS = {
+    "e": 5.49e-4, "H": 1.00794, "He": 4.0026, "Li": 6.941,
+    "Be": 9.01218, "B": 10.811, "C": 12.0107, "N": 14.0067,
+    "O": 15.9994, "F": 18.9994, "Ne": 20.1797, "Na": 22.9898,
+    "Mg": 24.305, "Al": 26.9815, "Si": 28.0855, "P": 30.9738,
+    "S": 32.065, "Cl": 35.453, "Ar": 39.948, "K": 39.0983,
+    "Ca": 40.078, "Sc": 44.9559, "Ti": 47.867, "V": 50.9415,
+    "Cr": 51.9961, "Mn": 54.938, "Fe": 55.845, "Co": 58.9332,
+    "Ni": 58.6934, "Cu": 63.546, "Zn": 65.38, "Z": 16.0,
+}
+
+
+def _species_mass_cgs(formula: str) -> float:
+    """Mirror chemistry.cpp parse_species_single mass computation."""
+    import re
+
+    s = formula.replace("*", "")
+    chg = s.count("+") - s.count("-")
+    s = s.replace("+", "").replace("-", "")
+    s = re.sub(r"\([^)]*\)", "", s)
+    if s == "e":
+        return CGS_ME
+    mass = -chg * CGS_ME
+    for m in re.finditer(r"([A-Z][a-z]*)(\d*)", s):
+        elem, n = m.group(1), m.group(2)
+        if not elem:
+            continue
+        mass += CGS_MA * _ELEM_MASS.get(elem, 1.0) * (int(n) if n else 1)
+    return mass
 
 _MAX_DIM_HARD = 1024  # absolute cap per image dimension
 
@@ -37,6 +74,9 @@ class ICRegion:
     name: str
     mask: expr.Program
     channels: Dict[str, expr.Program] = field(default_factory=dict)
+    # per-channel CGS->code-unit multiplier (1/div) for channels
+    # declared via a _cgs key
+    cgs: Dict[str, float] = field(default_factory=dict)
 
 
 def _as_float(v, default: float = 0.0) -> float:
@@ -150,19 +190,74 @@ def build_ic(spec: Spec) -> Tuple[Dict[str, float], List[ICRegion], List[Issue]]
         spec, ic_role, chem_role)
 
     base: Dict[str, float] = {}
+    scales = cgs_scales(spec)
+    if scales is None and any(k in init for k in
+                              ("rho0_cgs", "pre0_cgs",
+                               "vel0_cgs", "b0_cgs")):
+        issues.append(Issue(
+            level="error", where="init",
+            message="univ: _cgs keys require a [unit] section"))
+    for bare, cgsk in (("rho0", "rho0_cgs"), ("pre0", "pre0_cgs"),
+                       ("vel0", "vel0_cgs"), ("b0", "b0_cgs")):
+        if bare in init and cgsk in init:
+            issues.append(Issue(
+                level="error", where="init",
+                message=f"univ: [init] '{bare}' and '{cgsk}' are "
+                        "mutually exclusive"))
+    if "T0" in init and ("pre0" in init or "pre0_cgs" in init):
+        issues.append(Issue(
+            level="error", where="init",
+            message="univ: [init] 'T0' and 'pre0'/'pre0_cgs' are "
+                    "mutually exclusive (pick one pressure "
+                    "specification)"))
+
+    def conv(cgs_key: str, kind: str) -> Optional[float]:
+        if cgs_key not in init or scales is None:
+            return None
+        return _as_float(init[cgs_key]) / scales[kind]
+
     base["rho"] = _as_float(init.get("rho0", 0.0))
+    if (v := conv("rho0_cgs", "rho")) is not None:
+        base["rho"] = v
     base["pre"] = _as_float(init.get("pre0", 0.0))
-    vel0 = _as_vec3(init.get("vel0", 0.0))
+    if (v := conv("pre0_cgs", "pre")) is not None:
+        base["pre"] = v
+    vel0_cgs = init.get("vel0_cgs")
+    if vel0_cgs is not None and scales is not None:
+        vel0 = _as_vec3(vel0_cgs)
+        for a in range(3):
+            vel0[a] /= scales["vel"]
+    else:
+        vel0 = _as_vec3(init.get("vel0", 0.0))
     for a in range(3):
         base[f"vel_{'xyz'[a]}"] = vel0[a]
-    if "b0" in init:
-        b0 = _as_vec3(init["b0"])
+    b0_cgs = init.get("b0_cgs")
+    if b0_cgs is not None or "b0" in init:
+        b0 = _as_vec3(b0_cgs if b0_cgs is not None else init["b0"])
+        if b0_cgs is not None and scales is not None:
+            for a in range(3):
+                b0[a] /= scales["b"]
         for a in range(3):
             base[f"b_{'xyz'[a]}"] = b0[a]
 
     species = _species_list(spec, chem)
     for sp in species:
         base[f"x.{sp}"] = _as_float(sp_init.get(sp, 1e-20), 1e-20)
+
+    # chem T0 pressure path (read_chem: pre0 = kb*T*rho/mu_mix),
+    # applied only when no explicit pressure was given.
+    if "T0" in init and base.get("pre", 0.0) == 0.0 and scales is not None:
+        rho_cgs = base["rho"] * scales["rho"]
+        if species:
+            xvals = [base.get(f"x.{s}", 1e-20) or 1e-20
+                     for s in species]
+            norm = sum(xvals) or 1.0
+            mu = sum((x / norm) * _species_mass_cgs(s)
+                     for x, s in zip(xvals, species))
+        else:
+            mu = CGS_MP
+        base["pre"] = (KB_CGS * _as_float(init["T0"]) * rho_cgs
+                       / mu / scales["pre"])
 
     regions: List[ICRegion] = []
     for name in sorted(region_secs):
@@ -191,10 +286,44 @@ def build_ic(spec: Spec) -> Tuple[Dict[str, float], List[ICRegion], List[Issue]]
         for key in sec:
             if key == "mask":
                 continue
-            if key in _BASE_CHANNELS or key in _B_CHANNELS or key.startswith("x."):
+            if key in _BASE_CHANNELS or key in _B_CHANNELS:
                 prog = compile_key(key, None)
                 if prog is not None:
                     region.channels[key] = prog
+            elif key.startswith("x."):
+                prog = compile_key(key, None)
+                if prog is not None:
+                    region.channels[key] = prog
+            elif key.endswith("_cgs"):
+                base_ch = key[:-4]
+                if (base_ch not in _BASE_CHANNELS
+                        and base_ch not in _B_CHANNELS):
+                    continue  # unknown channel: kratos ignores it
+                if base_ch in sec:
+                    issues.append(Issue(
+                        level="error",
+                        where=f"{region_src[name]}.{base_ch}",
+                        message=f"univ: [{region_src[name]}] "
+                                f"'{base_ch}' and '{key}' are "
+                                "mutually exclusive"))
+                    continue
+                if scales is None:
+                    issues.append(Issue(
+                        level="error", where=f"{region_src[name]}.{key}",
+                        message="univ: _cgs keys require a "
+                                "[unit] section"))
+                    continue
+                prog = compile_key(key, None)
+                if prog is not None:
+                    # _cgs program evaluates in CGS; scale to code
+                    # units (C++ evaluates+scales at float2_t and
+                    # casts once; python floats are float64).
+                    region.channels[base_ch] = prog
+                    kind = ("rho" if base_ch == "rho"
+                            else "pre" if base_ch == "pre"
+                            else "vel" if base_ch.startswith("vel")
+                            else "b")
+                    region.cgs[base_ch] = 1.0 / scales[kind]
         regions.append(region)
 
     # channels appearing in any region get a base entry (0) so layering works
@@ -279,7 +408,8 @@ def eval_ic_slice(
         for r in regions:
             if expr.evaluate(r.mask, vars7) != 0.0:
                 for ch, prog in r.channels.items():
-                    st[ch] = expr.evaluate(prog, vars7)
+                    st[ch] = (expr.evaluate(prog, vars7)
+                              * r.cgs.get(ch, 1.0))
         if species:
             norm = sum(st.get(f"x.{s}", 0.0) for s in species)
             for s in species:

@@ -8,7 +8,9 @@ doc: |
   if mass is present it wins, otherwise density is used (default 1).
   NB: the dynamics EoS stores the derived units in float32 -- make sure
   rho0*l0^3 and rho0*(l0/t0)^2 stay within ~3.4e38 (cross-checked by
-  the validator, which mirrors the trunk "Unit sys overflow" throw).
+  the validator, which mirrors the trunk "Unit sys overflow" throw and
+  warns when any code-unit value is within 3 orders of magnitude of
+  the float32 dynamic-range edge).
 keys:
   length:  { type: float, default: 1, doc: cm per code length unit }
   time:    { type: float, default: 1, doc: s per code time unit }

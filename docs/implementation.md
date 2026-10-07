@@ -569,3 +569,46 @@ Form）、`[module.X]` 里的模块参数到不了 kratos 内部模块（原生�
     （静止奇异）。四个用例过；pytest 239 / vitest 54 / build 通过。
   - 文档：`user_guide_turb_box.md`（edot 讲解 + 全部参考数字换成
     新运行）、`universal_pgen_reference.md`（post.turb 表 + 硬约束）。
+
+## M2.8：CGS 单位制（`_cgs` 后缀键）
+
+用户指令：GUI 输入的物理量为 CGS，kratos 内部维持 code unit（规避浮点
+动态范围错误，化学换算对用户透明）；全部 CGS 量加 `_cgs` 后缀；换算在
+C++ pgen 内（前端核验 FP32 边缘）；表达式坐标保持 code units；chem 侧
+统一 `[init] _cgs`；裸键 = code-unit 逃生口。
+
+- **C++（usr_ext/universal/，主干磁盘）**：
+  - 新文件 `univ_unit.h`：`unit_helper_t`（`[unit]` 探测、按类除数
+    `div(kind)`、互斥/必需检查）；除数表：rho→ρ0、pre→ene0、
+    vel→l0/t0、b→√(4π·ene0)、**edot→l0²/t0³（derive(0,2,-3)，无 ρ
+    因子，turb_chem 同式）**。
+  - `univ_hydro.h`/`univ_mhd.h`：`[init]` 与 `[ic.*]` 的 `_cgs` 键
+    （互斥/需 unit 硬错）；IC 表达式求值与缩放全程 `float2_t`、单次
+    cast → 孪生运行**逐位一致**（SOD/BW/INF/CHEM 全部 field 级 md5
+    相同；TURB 残差 2.7e-3 系 rand FP32 种子混沌放大，属预期）。
+  - `univ_chem.h`：`[init] rho0_cgs/pre0_cgs/vel0_cgs` 统一覆盖 +
+    `T0`（K）与 `pre0` 互斥。
+  - `univ_inflow.h`：`[bc.expr_inflow]` 逐键 `_cgs`。
+  - `univ_post.h`：`edot_cgs`（互斥 + 需 unit）。
+- **前端（本 repo）**：
+  - `xchecks.py`：`cgs_scales()` 镜像 `div()`；`_check_cgs()`——需
+    `[unit]`、裸/_cgs 互斥（镜像 C++ 报错文本）、T0 冲突、未知通道
+    warning、换算值 FP32 溢出 error/近边缘（3 个数量级）warning。
+  - `ic_eval.py`：base/区域 `_cgs` 换算；chem `T0`→pre 用
+    `[species_init]` 混合 μ（`_species_mass_cgs` 镜像 chemistry.cpp）。
+  - descriptors：init/ic/post/boundary/unit 各 `_cgs` 键与文档。
+  - 测试：pytest 258 / vitest 54。
+- **踩坑与修复（诚实记录）**：`ism_turb.par` 首配 `edot_cgs=3.03e-27`
+  按**错误公式**（ene0/t0）校准，实际驱动仅 1e-25 → 注入不可见（E 恒
+  定）。插桩定位（A=0.25 正常、edot=1e-25 异常）后确认 **C++ 一直是
+  正确的 `l0²/t0³`**；错误在前端镜像 `cgs_scales()`（同为 ene0/t0）
+  ——已修复（`l0**2/t0**3`，测试期望同步）。教训：跨端镜像的公式
+  必须从 C++ 源逐行抄，不能凭记忆。
+- **ism_turb.par（pars/，物理单位示例）**：10pc/Myr/1e-24 单位制、
+  64³/8×32³ 块、`edot_cgs=1.515e-3`→0.05、种子 0.1 km/s 白噪声。
+  验证：t=2（343 周期，~1 s），**dE=0.100005=edot·M·T**（5×10⁻⁵）、
+  v_rms 0.0084→0.366（3.6 km/s）、M 精确守恒；turb_box 回归
+  dE 仍精确（1e-8）。多块注入路径亦验证（turb_mb8/：8 块 ΔE=409.6
+  = edot·M·T 精确）。
+- 文档：`universal_pgen_reference.md` §7.1–7.3（换算表/规则/FP32 守
+  卫）、`user_guide_turb_box.md` §8（CGS 变体 + 参考数字）。

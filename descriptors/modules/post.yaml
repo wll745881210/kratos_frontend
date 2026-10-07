@@ -58,6 +58,9 @@ keys:
                   doc: "specific kinetic-energy injection rate \
                         (code units L^2/T^3); per-cycle kick \
                         injects exactly edot*dt per unit mass" }
+  edot_cgs:     { type: float,
+                  doc: "edot in erg/g/s (needs [unit]; mutually \
+                        exclusive with edot)" }
   mode_max:     { type: int,   default: 1,
                   doc: "driving wavevector components drawn \
                         from [-mode_max, mode_max]" }

@@ -5,6 +5,9 @@ doc: |
   kratos' built-in uniform IC channel.  std_tst style uses
   rho0/pre0/vel0/b0 (code units); chem_hydro/chem_mhd read_chem() uses
   rho0_cgs/T0/vel0_cgs (physical units, converted via [unit]).
+  _cgs keys are mutually exclusive with their bare counterpart and
+  require a [unit] section.  T0 (K, chem modules) is an alternative
+  pressure specification: T0 and pre0/pre0_cgs are mutually exclusive.
 keys:
   rho0:     { type: float, doc: uniform density (code units) }
   pre0:     { type: float, doc: uniform pressure (code units) }
@@ -13,6 +16,10 @@ keys:
   b0:       { type: "float[]",
               doc: uniform magnetic field (code units); scalar broadcasts }
   rho0_cgs: { type: float, doc: uniform density (g/cm^3) }
-  T0:       { type: float, doc: uniform temperature (K) }
+  pre0_cgs: { type: float, doc: uniform pressure (dyn/cm^2) }
   vel0_cgs: { type: "float[]",
               doc: uniform velocity (cm/s); scalar broadcasts }
+  b0_cgs:   { type: "float[]",
+              doc: "uniform magnetic field (Gauss); scalar broadcasts; \
+                    code unit uses sqrt(4*pi*ene0)" }
+  T0:       { type: float, doc: uniform temperature (K) }

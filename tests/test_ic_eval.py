@@ -255,3 +255,139 @@ rho = 0.125
     assert row[100] == 0.125  # scoped-only region
     # species channels exist (H2/H from chem.chemistry)
     assert "x.H2" in out["fields"]
+
+
+# ---------------------------------------------------------------------------
+# CGS suffix keys (univ_unit.h conversion mirror, float64 scaling)
+# ---------------------------------------------------------------------------
+
+CGS_UNIT = """
+[unit]
+length = 1.0e18
+time = 1.0e10
+density = 1.0e-24
+"""
+
+
+def test_cgs_region_matches_bare():
+    """_cgs region values convert to the same code-unit numbers as
+    the equivalent bare keys (python float64 mirrors the C++
+    evaluate-at-float2_t-and-cast-once path)."""
+    base = CGS_UNIT + """
+[mesh]
+x_min = 0 0 0
+x_max = 1 1 1
+n_cell_global = 128 2 1
+[init]
+rho0_cgs = 1.0e-24
+pre0_cgs = 1.0e-8
+[ic.right]
+mask = x geq 0.5
+rho_cgs = 0.125e-24
+pre_cgs = 0.1e-8
+"""
+    out = ic_eval.eval_ic_slice(_spec_from_text(base), axis=2, max_dim=128)
+    assert not [i for i in out["issues"] if i["level"] == "error"]
+    rho = out["fields"]["rho"]["data"][0]
+    pre = out["fields"]["pre"]["data"][0]
+    assert all(v == 1.0 for v in rho[:64])
+    assert all(v == pytest.approx(0.125e-24 / 1e-24, rel=1e-12)
+               for v in rho[64:])
+    assert all(v == pytest.approx(0.1e-8 / 1e-8, rel=1e-12)
+               for v in pre[64:])
+
+
+def test_cgs_init_uniform_conversion():
+    text = CGS_UNIT + """
+[mesh]
+x_min = 0 0 0
+x_max = 1 1 1
+n_cell_global = 16 2 1
+[init]
+rho0_cgs = 2.0e-24
+pre0_cgs = 2.0e-8
+vel0_cgs = 1.0e8
+"""
+    out = ic_eval.eval_ic_slice(_spec_from_text(text), axis=2, max_dim=64)
+    assert out["issues"] == []
+    rho = out["fields"]["rho"]["data"][0]
+    pre = out["fields"]["pre"]["data"][0]
+    vx = out["fields"]["vel_x"]["data"][0]
+    assert all(v == 2.0 for v in rho)
+    assert all(v == pytest.approx(2.0, rel=1e-12) for v in pre)
+    assert all(v == 1.0 for v in vx)  # vel0_cgs scalar -> (v,0,0)
+
+
+def test_cgs_missing_unit_is_error_issue():
+    text = """
+[mesh]
+x_min = 0 0 0
+x_max = 1 1 1
+n_cell_global = 16 2 1
+[init]
+rho0_cgs = 1.0e-24
+"""
+    out = ic_eval.eval_ic_slice(_spec_from_text(text), axis=2, max_dim=64)
+    errs = [i for i in out["issues"] if i["level"] == "error"]
+    assert any("require a [unit] section" in i["message"] for i in errs)
+
+
+def test_cgs_region_exclusive_is_error_issue():
+    text = CGS_UNIT + """
+[mesh]
+x_min = 0 0 0
+x_max = 1 1 1
+n_cell_global = 16 2 1
+[ic.left]
+mask = x lt 0.5
+rho = 1
+rho_cgs = 1.0e-24
+"""
+    out = ic_eval.eval_ic_slice(_spec_from_text(text), axis=2, max_dim=64)
+    errs = [i for i in out["issues"] if i["level"] == "error"]
+    assert any("'rho' and 'rho_cgs' are mutually exclusive"
+               in i["message"] for i in errs)
+
+
+def test_cgs_b0_converts():
+    text = CGS_UNIT + """
+[mesh]
+x_min = 0 0 0
+x_max = 1 1 1
+n_cell_global = 16 2 1
+[init]
+rho0_cgs = 1.0e-24
+b0_cgs = 3.5449077018110314e-4
+"""
+    out = ic_eval.eval_ic_slice(_spec_from_text(text), axis=2, max_dim=64)
+    assert out["issues"] == []
+    bx = out["fields"]["b_x"]["data"][0]
+    assert all(abs(v - 1.0) < 1e-12 for v in bx)
+
+
+def test_chem_T0_pressure():
+    """read_chem mirror: pre0 = kb*T*rho_cgs/mu_mix/ene0 with the
+    species-mixture mean mass (chemistry.cpp parse_species_single)."""
+    text = CGS_UNIT + """
+[mesh]
+x_min = 0 0 0
+x_max = 1 1 1
+n_cell_global = 16 2 1
+[module]
+type = chem_hydro
+[chemistry]
+species = H2 H
+[species_init]
+H2 = 1
+H = 1
+[init]
+rho0_cgs = 2.0e-24
+T0 = 100
+"""
+    out = ic_eval.eval_ic_slice(_spec_from_text(text), axis=2, max_dim=64)
+    assert not [i for i in out["issues"] if i["level"] == "error"]
+    pre = out["fields"]["pre"]["data"][0]
+    ma = 1.66054e-24
+    mu = 0.5 * (2 * 1.00794 * ma) + 0.5 * (1.00794 * ma)
+    expected = (1.38065e-16 * 100 * 2.0e-24) / mu / 1e-8
+    assert all(abs(v - expected) / expected < 1e-12 for v in pre)

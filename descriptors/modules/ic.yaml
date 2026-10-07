@@ -10,6 +10,11 @@ doc: |
   because par values cannot contain '='.
   Species channels x.<name> (number fraction, auto-normalized) are
   dynamic keys -- see blocklib ic_channels; they are not listed here.
+  Every channel also accepts a _cgs suffix (rho_cgs, pre_cgs,
+  vel_x_cgs, ..., b_z_cgs): the expression evaluates in CGS and the
+  value is converted to code units (needs [unit]; mutually exclusive
+  with the bare key; evaluated and scaled at double precision, so
+  _cgs and equivalent bare keys agree bit-for-bit).
   Under role scoping the GUI writes [R.ic.<region>].
 keys:
   mask:  { type: any,  default: "1",
@@ -22,3 +27,11 @@ keys:
   b_x:   { type: any,  doc: "magnetic field x expression (mhd)" }
   b_y:   { type: any,  doc: "magnetic field y expression (mhd)" }
   b_z:   { type: any,  doc: "magnetic field z expression (mhd)" }
+  rho_cgs:   { type: any, doc: "density expression (g/cm^3, needs [unit])" }
+  pre_cgs:   { type: any, doc: "pressure expression (dyn/cm^2, needs [unit])" }
+  vel_x_cgs: { type: any, doc: "velocity x expression (cm/s, needs [unit])" }
+  vel_y_cgs: { type: any, doc: "velocity y expression (cm/s, needs [unit])" }
+  vel_z_cgs: { type: any, doc: "velocity z expression (cm/s, needs [unit])" }
+  b_x_cgs:   { type: any, doc: "magnetic field x expression (Gauss, needs [unit])" }
+  b_y_cgs:   { type: any, doc: "magnetic field y expression (Gauss, needs [unit])" }
+  b_z_cgs:   { type: any, doc: "magnetic field z expression (Gauss, needs [unit])" }

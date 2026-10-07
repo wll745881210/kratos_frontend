@@ -264,7 +264,47 @@ rank-0 抽取一个波模 `k = 2π/L · k_i`（|k_i| ≤ mode_max，不全为零
 
 ---
 
-## 8. 常见问题（全部来自真实踩坑）
+## 8. 物理单位（CGS）变体：`ism_turb.par`
+
+turb_box 用的是 code units（ρ=1、L=32）。做物理设置时，请用
+`usr_ext/universal/pars/ism_turb.par`：**所有物理量以 CGS 输入**（`_cgs`
+后缀），pgen 读参数时换算为 code unit——天体物理典型的
+`10 pc / 1 Myr / 1e-24 g/cm³` 单位制：
+
+```ini
+[unit]
+length   = 3.0857e19     # 10 pc
+time     = 3.1557e13     # 1 Myr
+density  = 1.0e-24       # g/cm^3 (~0.6 particles/cm^3)
+
+[init]
+rho0_cgs = 1.0e-24       # → rho0 = 1
+pre0_cgs = 3.856e-13     # → ~T 300 K（μ 0.6）
+
+[ic.seed]
+vel_x_cgs = 1.0e4 * ( 2 * rand( i, j, k, 42 ) - 1 )   # 0.1 km/s 白噪声
+
+[subgrid.post.turb]
+edot_cgs  = 1.515e-3     # erg/g/s → 0.05 code units
+```
+
+注意（完整规则见 `universal_pgen_reference.md` §7）：
+
+- `edot_cgs`（erg/g/s）的换算是 **`l0²/t0³`**（比能功率，不含 ρ 因子）；
+  本单位制下 = 3.03e-2，故 1.515e-3 → 0.05。**校准 edot 时用对公式**
+  ——这是真实踩过的坑（配 3e-27 会得到 1e-25 的无效驱动）。
+- 表达式里 `x/y/z/t` 仍是 code units（本例 [0,1]³）；通道数值才是 CGS。
+- 同通道裸键与 `_cgs` 互斥；`_cgs` 必须有 `[unit]`；GUI 会守卫 FP32
+  动态范围（换算值距 3.4e38/1.2e-38 不到 3 个数量级时告警）。
+
+参考结果（64³、8×32³ 块、t=2 Myr、343 周期、~1 s GPU）：
+**dE = 0.100005 = edot·M·T = 0.05×1×2（精确到 5×10⁻⁵）**；v_rms 从
+0.0084（种子）涨到 **0.366 code = 3.6 km/s**（其余注入能量经激波耗散
+为热——E 精确增加 0.1，KE 只保留 0.067）；M=1.000000 守恒。
+
+---
+
+## 9. 常见问题（全部来自真实踩坑）
 
 1. **par 值里不能有 `=`**：`mask = x >= 0.5` 会被截断成 `x >`。
    比较/逻辑请用词运算符：`geq leq neq gt lt eq ne and or not`。
@@ -288,7 +328,7 @@ rank-0 抽取一个波模 `k = 2π/L · k_i`（|k_i| ≤ mode_max，不全为零
 
 ---
 
-## 9. 相关文档
+## 10. 相关文档
 
 - `docs/kratos_internals.md` — 已核验的 kratos 内部事实（含全部陷阱）
 - `docs/regulations.md` — 模块添加 / 超参数 / 网格调整三节规程

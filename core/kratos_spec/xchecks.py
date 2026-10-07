@@ -10,11 +10,17 @@ These mirror failure modes verified in the kratos trunk:
   (``m0 = rho0*l0^3``, ``ene0 = rho0*l0^2/t0^2``, ``vel0 = l0/t0``)
   exceeds the float32 range, ``unit_t::init`` throws
   "Unit sys overflow" (src/utilities/phys/unit.h:47-49).
+- cgs: ``_cgs``-suffixed keys (univ_unit.h) require a [unit] section,
+  are mutually exclusive with their bare counterpart, and convert to
+  code-unit values checked against the float32 dynamic-range edge
+  (warning when within 3 orders of magnitude of it).
 """
 
 from __future__ import annotations
 
-from .spec import Issue
+import math
+
+from .spec import Issue, Spec
 
 # float32 limits (IEEE 754 binary32)
 F32_MAX = 3.4028234663852886e38
@@ -143,6 +149,215 @@ def _check_unit(spec) -> list[Issue]:
                 "warning", f"unit.{key}",
                 f"derived unit {key}={v:.3e} underflows normal "
                 f"float32 range (min {F32_MIN_NORMAL:.3e})"))
+        elif _near_f32_edge(v):
+            issues.append(Issue(
+                "warning", f"unit.{key}",
+                f"derived unit {key}={v:.3e} is within 3 orders "
+                f"of magnitude of the float32 dynamic-range edge "
+                f"(~{F32_MAX:.0e} / {F32_MIN_NORMAL:.0e}); kratos "
+                f"stores units in float32 -- rescale [unit] to "
+                f"keep results well inside the range"))
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# CGS suffix keys (_cgs): mirror the universal-pgen conversions
+# (usr_ext/universal/univ_unit.h).  Checks: _cgs requires [unit];
+# bare + _cgs same channel are mutually exclusive; [init] T0 vs
+# pre0/pre0_cgs conflict; code-unit values near the float32 edge.
+# ---------------------------------------------------------------------------
+
+F32_EDGE_HI = 1e35   # 3 orders below F32_MAX
+F32_EDGE_LO = 1e-35  # 3 orders above F32_MIN_NORMAL
+
+
+def _near_f32_edge(v: float) -> bool:
+    return abs(v) > F32_EDGE_HI or 0 < abs(v) < F32_EDGE_LO
+
+
+def cgs_scales(spec) -> dict | None:
+    """Per-kind code-unit divisors, mirroring univ_unit.h div().
+
+    Returns {"rho": rho0, "pre": ene0, "vel": vel0,
+             "b": sqrt(4*pi*ene0), "edot": l0**2/t0**3} or None
+    [unit] is absent/incomplete.  ene0 = rho0*(l0/t0)^2.
+    The unit section is normally global; a role-scoped [R.unit]
+    override (C++ scoped_input delivers it to module R) is honored
+    when no global [unit] exists.
+    """
+    nums = _unit_numbers(spec)
+    if nums is None:
+        sections = getattr(spec, "sections", {})
+        if isinstance(sections, dict):
+            declared = _declared_modules(sections)
+            for name in sorted(sections):
+                if name.endswith(".unit"):
+                    prefix = name[:-5]
+                    if prefix in declared:
+                        sub = dict(sections[name])
+                        sub.setdefault("length", 1.0)
+                        sub.setdefault("time", 1.0)
+                        holder = Spec.__new__(Spec)
+                        holder.sections = {"unit": sub}
+                        nums = _unit_numbers(holder)
+                        break
+    if nums is None:
+        return None
+    l0, t0, rho0 = nums
+    if l0 == 0 or t0 == 0:
+        return None
+    ene0 = rho0 * (l0 / t0) ** 2
+    return {"rho": rho0, "pre": ene0, "vel": l0 / t0,
+            "b": math.sqrt(4 * math.pi * ene0),
+            "edot": l0**2 / t0**3}
+
+
+def _num_or_none(v):
+    if isinstance(v, (list, tuple)):
+        v = v[0] if v else None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        try:
+            return float(v)
+        except ValueError:
+            return None
+    return None
+
+
+def _spec_sections(spec) -> dict:
+    sections = getattr(spec, "sections", {})
+    return sections if isinstance(sections, dict) else {}
+
+
+def _cgs_kind_of(channel: str) -> str | None:
+    if channel in ("rho", "rho0"):
+        return "rho"
+    if channel in ("pre", "pre0"):
+        return "pre"
+    if channel.startswith("vel"):
+        return "vel"
+    if channel.startswith("b_") or channel == "b0":
+        return "b"
+    if channel == "edot":
+        return "edot"
+    return None
+
+
+def _check_cgs(spec) -> list[Issue]:
+    issues: list[Issue] = []
+    sections = _spec_sections(spec)
+    scales = cgs_scales(spec)
+    declared = _declared_modules(sections)
+
+    # (native-name prefix or exact, channel list)
+    # init channels: rho0/pre0/vel0/b0 (+ chem T0); ic regions and
+    # expr_inflow: rho/pre/vel_x../b_x..; post.turb: edot.
+    def native_of(name: str) -> str | None:
+        """Native section name for the cgs scan.
+
+        [R.X] with R a declared module role -> X (the role override);
+        [X] or a global multi-dot section such as [ic.left] /
+        [post.turb] / [bc.expr_inflow] -> the name itself (consumed
+        by the un-roled module; C++ scoped_input delivers globals to
+        every module).  [coupling.*]/[module.*] are container syntax.
+        """
+        if "." not in name:
+            return name
+        prefix, rest = name.split(".", 1)
+        if prefix in _CONTAINER_SECTIONS:
+            return None
+        if prefix in declared:
+            return rest
+        return name
+
+    def scan(secname: str, native: str):
+        if native == "init":
+            chans = ["rho0", "pre0", "vel0", "b0"]
+            where = f"{secname}"
+        elif native.startswith("ic.") or native == "bc.expr_inflow":
+            chans = ["rho", "pre",
+                     "vel_x", "vel_y", "vel_z",
+                     "b_x", "b_y", "b_z"]
+            where = f"{secname}"
+        elif native == "post.turb":
+            chans = ["edot"]
+            where = f"{secname}"
+        else:
+            return
+        sec = sections.get(secname, {})
+        if not isinstance(sec, dict):
+            return
+        cgs_keys = [k for k in sec if k.endswith("_cgs")]
+        if not cgs_keys:
+            return
+        if scales is None:
+            issues.append(Issue(
+                "error", where,
+                f"univ: _cgs keys require a [unit] section "
+                f"(found {', '.join(sorted(cgs_keys))} in "
+                f"[{secname}])"))
+        for k in cgs_keys:
+            base = k[:-4]
+            if base in sec:
+                issues.append(Issue(
+                    "error", where,
+                    f"univ: [{secname}] '{base}' and '{k}' are "
+                    f"mutually exclusive"))
+            elif base not in chans and not base.startswith("x."):
+                issues.append(Issue(
+                    "warning", where,
+                    f"univ: [{secname}] '{k}' is not a known channel "
+                    f"(kratos ignores it)"))
+        # code-unit value sanity for numeric values
+        if scales is not None:
+            for k in cgs_keys:
+                base = k[:-4]
+                kind = _cgs_kind_of(base)
+                if kind is None:
+                    continue
+                div = scales.get(kind)
+                if not div:
+                    continue
+                v = _num_or_none(sec.get(k))
+                if v is None:
+                    continue
+                code = v / div
+                if abs(code) > F32_MAX:
+                    issues.append(Issue(
+                        "error", where,
+                        f"[{secname}] {k}={v:.3e} converts to "
+                        f"{code:.3e} code units and overflows float32 "
+                        f"-- rescale [unit]"))
+                elif _near_f32_edge(code):
+                    issues.append(Issue(
+                        "warning", where,
+                        f"[{secname}] {k}={v:.3e} converts to "
+                        f"{code:.3e} code units, within 3 orders of "
+                        f"magnitude of the float32 dynamic-range edge "
+                        f"(kratos computes in float32)"))
+        return
+
+    for name in sorted(sections):
+        native = native_of(name)
+        if native is None:
+            continue
+        scan(name, native)
+
+    # chem pressure specification: T0 vs pre0/pre0_cgs (chem family)
+    for name in sorted(sections):
+        native = native_of(name)
+        if native != "init":
+            continue
+        sec = sections.get(name, {})
+        if not isinstance(sec, dict):
+            continue
+        if "T0" in sec and ("pre0" in sec or "pre0_cgs" in sec):
+            issues.append(Issue(
+                "error", name,
+                f"univ: [{name}] 'T0' and 'pre0'/'pre0_cgs' are "
+                f"mutually exclusive (pick one pressure "
+                f"specification)"))
     return issues
 
 
@@ -196,7 +411,7 @@ def cross_validate(spec) -> list[Issue]:
     """Cross-field checks; appended to Spec.validate()."""
     return (_check_mesh(spec) + _check_unit(spec)
             + _check_refine(spec) + _check_roles(spec)
-            + _check_post(spec))
+            + _check_post(spec) + _check_cgs(spec))
 
 
 # ---------------------------------------------------------------------------

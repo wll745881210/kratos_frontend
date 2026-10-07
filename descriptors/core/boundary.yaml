@@ -5,7 +5,10 @@ doc: |
   Six faces (x-, x+, y-, y+, z-, z+).  Known kinds are registered by the
   module boundary keepers: per (periodic, substring-matched), out, fre,
   ref; pol only on theta faces.  The universal pgen additionally
-  registers expr_inflow (expression-driven inflow).
+  registers expr_inflow (expression-driven inflow).  expr_inflow
+  field keys (rho/pre/vel_x/.../b_z) may carry a _cgs suffix: the
+  expression evaluates in CGS and is converted per [unit] (mutually
+  exclusive with the bare key).
 keys:
   kinds:
     type: "str[]"

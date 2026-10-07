@@ -290,6 +290,41 @@ print_info phy_bnd_type` 等，见 `src/modules/multigrid/multigrid.cpp`）。
 
 ## 7. 单位与精度
 
+### 7.1 CGS 后缀键（`*_cgs`）
+
+用户以 CGS 输入物理量，pgen 在**读参数时**换算为 code unit（`univ_unit.h`
+`div()`，与 `usr_ext/turb_chem` 同法）；裸键（无后缀）= 直接的 code unit
+逃生口。
+
+| 通道键 | 物理量 | 除数（= 每 code unit 的 CGS 值） |
+|---|---|---|
+| `rho0_cgs`、`rho_cgs` | g/cm³ | `rho0 = m0/l0³`（给了 density 即其本身） |
+| `pre0_cgs`、`pre_cgs`、`heat0_cgs` | erg/cm³ | `ene0 = rho0·(l0/t0)²` |
+| `vel0_cgs`、`vel_x_cgs` …、inflow 各键 | cm/s | `l0/t0` |
+| `b0_cgs`、`b_x_cgs` … | G | `sqrt(4π·ene0)`（磁能 ½ B²/4π 约定） |
+| `edot_cgs` | erg/g/s | `l0²/t0³`（**无 ρ 因子**，比能功率） |
+| `T0`（chem） | K | 无换算——`pre0 = kb·T0·rho0_cgs/(μ·ene0)`，μ 由 `[species_init]` 混合 |
+
+规则：
+
+- 同通道裸键 + `_cgs` **互斥**（硬错误）；`_cgs` 存在但无 `[unit]`（硬错误）。
+- 无量纲量（`gamma`、`cfl`、`mu_amu`、`z_z0`、`x.<species>`）不设后缀。
+- `[mesh]`/`[boundary]`/`[cycle]` 坐标与时间**始终是 code units**，无 `_cgs`。
+- 表达式中坐标变量 `x/y/z/t` 保持 code units；通道**数值**为 CGS——
+  求值与缩放在 float2_t（双精度）完成后**一次性**转 float_t，与同状态
+  裸键写入位相同（孪生运行 bitwise 验证，见 `implementation.md` M2.8）。
+- 作用域节同样适用（`[<role>.<section>]` 内的 `_cgs` 键）；`[R.unit]`
+  可作模块级覆盖，全局 `[unit]` 缺失时生效。
+- `T0` 与 `pre0`/`pre0_cgs` 互斥（都定义压强，硬错误）。
+
+### 7.2 FP32 动态范围守卫（前端）
+
+`[unit]` 派生量与 `_cgs` 换算后的 code-unit 值若距 FP32 范围边缘
+（3.4e38 / 1.2e-38）**不足 3 个数量级**，GUI/`validate` 告警；超出则报错。
+典型触发：`kpc + mp`（ene0 溢出）——换 `pc + Myr` 级组合。
+
+### 7.3 精度约定
+
 - 单位自由的模拟不需要 `[unit]`；涉及 CGS 物理（冷却表、化学 T0 等）
   时必须提供。`[unit]` 派生量以 FP32 存储：l0+m0+t0+ene0+vel0 溢出
   3.4e38 → kratos 直接报错（如 `kpc + mp`；换 `pc + Myr`）。
@@ -320,6 +355,7 @@ print_info phy_bnd_type` 等，见 `src/modules/multigrid/multigrid.cpp`）。
 | `usr_ext/universal/pars/briowu_univ.par` | mhd + `b_*` IC |
 | `usr_ext/universal/pars/chem_sod_univ.par` | chem_hydro + species IC（`x.H2`） |
 | `usr_ext/universal/pars/turb_box.par` | hydro + post 湍流驱动（教程 §3） |
+| `usr_ext/universal/pars/ism_turb.par` | **CGS 物理单位版**（`[unit]` 10pc/Myr + `_cgs` 键，§7.1） |
 | `usr_ext/universal/pars/mg2_hydro.par` | 多模块 + order + 作用域节覆盖 |
 | `usr_ext/universal/pars/role_sections.par` | 作用域节传导验证（mg_a 静默 / mg_b 打印） |
 | `usr_ext/universal/pars/cmz_shape.par` | cmz 接线的容器语法表达性工件（不可运行） |
