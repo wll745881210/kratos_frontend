@@ -68,7 +68,13 @@ function KratosNode({ data }: NodeProps<NodeData>) {
   return (
     <div className={cls}>
       {!data.core && (
-        <Handle type="target" position={Position.Left} />
+        <>
+          {/* left/right handles: execution-order flow (provider right
+              -> consumer left); top/bottom: parasite attachments
+              (host bottom -> parasite top, dashed edge) */}
+          <Handle type="target" position={Position.Left} id="in" />
+          <Handle type="target" position={Position.Top} id="top" />
+        </>
       )}
       <div className="gnode-label">{data.label}</div>
       {data.sub && <div className="gnode-sub">{data.sub}</div>}
@@ -107,7 +113,10 @@ function KratosNode({ data }: NodeProps<NodeData>) {
         </div>
       )}
       {!data.core && (
-        <Handle type="source" position={Position.Right} />
+        <>
+          <Handle type="source" position={Position.Right} id="out" />
+          <Handle type="source" position={Position.Bottom} id="bot" />
+        </>
       )}
     </div>
   );
@@ -115,19 +124,38 @@ function KratosNode({ data }: NodeProps<NodeData>) {
 
 const nodeTypes = { kratos: KratosNode };
 
-// Edges render in DATA-FLOW direction: the coupling PROVIDER (e.g. the
-// hydro that post's dyn slot binds to) is upstream, the slot DECLARER
-// ([coupling.<role>] owner) downstream. GEdge.fromRole/toRole keep the
-// declarer/provider roles for mutations; only the rendering flips.
+// Edge rendering, split by relation kind so the geometry carries the
+// semantics the user expects:
+//   - slot couplings (dyn, sources, ...) = EXECUTION-ORDER FLOW: solid
+//     edges on the SIDE handles, provider's right -> declarer's left.
+//   - parasite bindings = a different relation entirely: dashed edges
+//     on the VERTICAL handles, host's bottom -> parasite's top.
+// GEdge.fromRole/toRole keep the declarer/provider roles for
+// mutations; only the rendering is redirected.
 export function flowEdges(g: Graph): Edge[] {
-  return g.edges.map((e) => ({
-    id: e.id,
-    source: e.toId,
-    target: e.fromId,
-    label: e.parasite ? "parasite" : e.key,
-    animated: e.parasite,
-    className: e.parasite ? "gedge parasite" : "gedge",
-  }));
+  return g.edges.map((e) =>
+    e.parasite
+      ? {
+          id: e.id,
+          source: e.toId, // host
+          sourceHandle: "bot",
+          target: e.fromId, // parasite (slot declarer)
+          targetHandle: "top",
+          label: "parasite",
+          animated: true,
+          className: "gedge parasite",
+        }
+      : {
+          id: e.id,
+          source: e.toId, // provider (upstream)
+          sourceHandle: "out",
+          target: e.fromId, // slot declarer (downstream)
+          targetHandle: "in",
+          label: e.key,
+          animated: false,
+          className: "gedge",
+        },
+  );
 }
 
 // Columnar auto-layout: core sections left, modules right (by order, then
@@ -403,7 +431,7 @@ export function DiagramView({
         <span className={roleProblem ? "hint role-error" : "hint"}>
           {roleProblem
             ? `${proposedRole}: ${roleProblem} — pick a role name like '${suggest[newType] ?? newType}'`
-            : "edit opens this module's inspector · link offers valid couplings · drag handles to connect · double-click a node to inspect"}
+            : "edit opens inspector · link offers couplings · drag handles: left/right = flow, top/bottom = parasite · double-click to inspect"}
         </span>
       </div>
 

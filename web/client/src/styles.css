@@ -165,6 +165,18 @@ input, select {
 }
 .react-flow__handle.connecting { background: var(--error); }
 
+/* Vertical (parasite) handles look distinct: hollow dashed dots to
+   echo the dashed vertical parasite edges; horizontal handles stay
+   solid accent = execution flow. */
+.react-flow__handle-top,
+.react-flow__handle-bottom {
+  width: 11px; height: 11px;
+  background: var(--card);
+  border: 2px dashed var(--dim);
+}
+.react-flow__handle-top:hover,
+.react-flow__handle-bottom:hover { border-color: var(--accent); }
+
 .coupling-dialog {
   position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
   display: flex; gap: 8px; align-items: center; z-index: 20;

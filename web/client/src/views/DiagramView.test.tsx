@@ -121,15 +121,30 @@ describe("DiagramView", () => {
     expect(ops.calls).toEqual(["addCoupling:chem:parasite:flow"]);
   });
 
-  it("renders coupling edges in data-flow direction (provider -> declarer)", () => {
-    // SPEC couples chem (parasite) to flow: the RENDERED edge must have
-    // flow (provider) as the React Flow source, chem (declarer) target.
+  it("renders edges by relation kind: slots flow sideways, parasite vertical", () => {
+    // SPEC couples chem (parasite) to flow: a PARASITE edge must render
+    // host bottom -> parasite top, dashed class.
     const g = specToGraph(SPEC);
-    const edges = flowEdges(g);
-    expect(edges.length).toBe(1);
-    expect(edges[0].source).toBe("module:flow");
-    expect(edges[0].target).toBe("module:chem");
-    // model-level identity (edge id) stays declarer-first
-    expect(edges[0].id).toContain("cpl:chem:parasite:flow");
+    const par = flowEdges(g);
+    expect(par.length).toBe(1);
+    expect(par[0].source).toBe("module:flow"); // host
+    expect(par[0].sourceHandle).toBe("bot");
+    expect(par[0].target).toBe("module:chem"); // parasite declarer
+    expect(par[0].targetHandle).toBe("top");
+    expect(par[0].className).toContain("parasite");
+    expect(par[0].id).toContain("cpl:chem:parasite:flow");
+
+    // a slot coupling (post.dyn = flow) renders as an execution-flow
+    // edge: provider right -> declarer left, solid.
+    const s: Spec = structuredClone(SPEC);
+    s.sections["module.post"] = { type: "post", order: 2 };
+    s.sections["coupling.post"] = { dyn: "flow" };
+    const edges = flowEdges(specToGraph(s));
+    const dyn = edges.find((e) => e.id.includes(":dyn:"));
+    expect(dyn?.source).toBe("module:flow");
+    expect(dyn?.sourceHandle).toBe("out");
+    expect(dyn?.target).toBe("module:post");
+    expect(dyn?.targetHandle).toBe("in");
+    expect(dyn?.className).toBe("gedge");
   });
 });
