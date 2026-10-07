@@ -27,6 +27,7 @@ import {
   COUPLING_SLOTS,
   CORE_SECTIONS,
   type Graph,
+  MODULE_LABELS,
   MODULE_TYPES,
   moduleNodeId,
   moduleType,
@@ -336,7 +337,7 @@ export function DiagramView({
         >
           {types.map((t) => (
             <option key={t} value={t}>
-              {t}
+              {MODULE_LABELS[t] ?? t}
             </option>
           ))}
         </select>

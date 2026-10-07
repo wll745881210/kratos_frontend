@@ -195,7 +195,8 @@ def _check_refine(spec) -> list[Issue]:
 def cross_validate(spec) -> list[Issue]:
     """Cross-field checks; appended to Spec.validate()."""
     return (_check_mesh(spec) + _check_unit(spec)
-            + _check_refine(spec) + _check_roles(spec))
+            + _check_refine(spec) + _check_roles(spec)
+            + _check_post(spec))
 
 
 # ---------------------------------------------------------------------------
@@ -321,4 +322,118 @@ def _check_roles(spec) -> list[Issue]:
                         "warning", name,
                         f"coupling target '{tgt}' is not a declared role"))
 
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# post module contract: runs AFTER its dyn target (registry.h hard
+# error), and turbulence driving needs a nonzero initial velocity
+# (the edot quadratic solve is singular at rest).
+# ---------------------------------------------------------------------------
+
+def _declared_modules(sections) -> dict[str, str]:
+    declared: dict[str, str] = {}
+    for name in sections:
+        if name == "module":
+            declared[""] = str(sections[name].get("type", ""))
+        elif name.startswith("module."):
+            declared[name[7:]] = str(sections[name].get("type", ""))
+    return declared
+
+
+def _module_orders(sections, declared: dict[str, str]) -> dict[str, int]:
+    """Explicit order, else lexicographic rank (registry.h default)."""
+    explicit = {
+        r: sections["module" if r == "" else f"module.{r}"].get("order")
+        for r in declared}
+    order: dict[str, int] = {}
+    rank = 0
+    for role in sorted(declared):
+        o = explicit[role]
+        if o is None:
+            o = rank
+        order[role] = int(o)
+        rank += 1
+    return order
+
+
+def _turb_enabled(sections, role: str) -> bool:
+    """[R.post.turb] enabled for this role, or global [post.turb]."""
+    for name in (f"{role}.post.turb" if role else "post.turb",
+                 "post.turb"):
+        sec = sections.get(name)
+        if isinstance(sec, dict):
+            v = sec.get("enabled", 0)
+            if str(v) not in ("0", "", "false", "False", "None"):
+                return True
+    return False
+
+
+def _has_initial_velocity(sections, declared: dict[str, str]) -> bool:
+    """Any vel channel: [init]/[R.init] vel0 != 0, or an [ic*]/[R.ic*]
+    vel_x/vel_y/vel_z expression key."""
+    for name in sections:
+        prefix = name.split(".", 1)[0] if "." in name else ""
+        if prefix in ("module", "coupling"):
+            continue
+        native = name[len(prefix) + 1:] if prefix in declared else name
+        if native == "init" or native.startswith("init."):
+            vel0 = sections[name].get("vel0")
+            if isinstance(vel0, list) and any(
+                    _num(v) and float(v) != 0 for v in vel0):
+                return True
+        if native == "ic" or native.startswith("ic."):
+            for key in sections[name]:
+                if key.split(".")[0] in ("vel_x", "vel_y", "vel_z"):
+                    return True
+    return False
+
+
+def _num(v):
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _check_post(spec) -> list[Issue]:
+    issues: list[Issue] = []
+    sections = getattr(spec, "sections", {})
+    if not isinstance(sections, dict):
+        return issues
+    declared = _declared_modules(sections)
+    posts = {r: t for r, t in declared.items() if t == "post"}
+    if not posts:
+        return issues
+    order = _module_orders(sections, declared)
+
+    # post must run AFTER its coupling targets (registry.h throws)
+    for name in sorted(sections):
+        if name == "coupling" or not name.startswith("coupling."):
+            continue
+        role = name[9:]
+        if role not in posts:
+            continue
+        for key, val in sections[name].items():
+            targets = (val if isinstance(val, list)
+                       else [val] if isinstance(val, str) else [])
+            for tgt in targets:
+                if (isinstance(tgt, str) and tgt in order
+                        and order[role] <= order[tgt]):
+                    issues.append(Issue(
+                        "error", name,
+                        f"module '{role}' (type post) must run AFTER "
+                        f"its coupling target '{tgt}' -- give it a "
+                        "larger 'order' (kratos throws at startup)"))
+
+    # turbulence needs a nonzero initial velocity
+    if any(_turb_enabled(sections, r) for r in posts):
+        if not _has_initial_velocity(sections, declared):
+            issues.append(Issue(
+                "warning", "post.turb",
+                "turbulence driving is singular at rest: seed an "
+                "initial velocity perturbation, e.g. an [ic.*] region "
+                "vel_x = 0.01*(2*rand(i,j,k,42)-1), or [init] "
+                "vel0 != 0"))
     return issues

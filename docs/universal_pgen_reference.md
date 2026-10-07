@@ -272,16 +272,17 @@ print_info phy_bnd_type` 等，见 `src/modules/multigrid/multigrid.cpp`）。
 | | `heat0_cgs` | 0 | 加热项 |
 | | `n_sub` | 8 | 子循环数（改进后向 Euler，lnT 上） |
 | `[post.turb]` | `enabled` | 0 | 开关 |
-| | `v_turb` | 0.1 | 速度色散目标量级 |
-| | `k_turb` | 2π | 驱动波数 |
-| | `n_modes` | 8 | 模式数（≤16） |
-| | `seed` | 42 | 模式种子（确定性） |
-| | `t_corr` | 1 | 相关时间 |
+| | `edot` | 0.1 | 单位质量动能注入率（L²/T³，>0）；每周期精确注入 edot·dt·M |
+| | `mode_max` | 1 | 每周期随机平面波波数分量上限（单位 2π/L，≥0） |
+| | `seed` | 42 | 驱动随机序列种子（确定性） |
+| | `n_cycle_off` | -1 | -1 持续驱动；n = 前 n 个周期驱动后关闭 |
 
 - 冷却在 CGS 下内部计算：需要 `[unit]` 提供 `length/time/density`
   （`density` 可写 `mp`）。γ 取自耦合动力学模块的 eos。
-- 湍流驱动：固定模式集 + 算子分裂 kick（`A = v_turb·sqrt(dt/t_corr)·
-  sqrt(M/S)`，能量精确）。详见 `docs/user_guide_turb_box.md` §6。
+- 湍流驱动：随机平面波 kick（turb_chem 同款），振幅由能量条件解析解出
+  （`A·conv² + B·conv = edot·dt·M`）。**两个硬约束**：post 的 `order`
+  必须大于其 dyn 目标（容器硬错）；初速必须非零（静止时振幅方程退化，
+  GUI 校验器警告）。详见 `docs/user_guide_turb_box.md` §6。
 - `[post.cooling]`/`[post.turb]` 全关 → step 直接跳过（打印提示），
   开销为零。
 

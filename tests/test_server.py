@@ -259,4 +259,4 @@ def test_blocklib_endpoint(client):
     assert "ic" in lib["reserved_roles"]
     post = lib["modules"][5]
     assert "post.turb" in post["sections"]
-    assert "v_turb" in {k["name"] for k in post["params"]["post.turb"]}
+    assert "edot" in {k["name"] for k in post["params"]["post.turb"]}

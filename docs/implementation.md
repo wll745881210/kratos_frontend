@@ -541,3 +541,31 @@ Form）、`[module.X]` 里的模块参数到不了 kratos 内部模块（原生�
   Diagram）。
 - 测试：pytest 239 / vitest 54；端到端 API 实测（parse 杂键报错、
   作用域 IC 求值 rho=1/0.125 正确、emit 往返 key-identical）。
+
+## M1-E-rev / M2.7：湍流驱动改为 edot 形式（turb_chem 对齐）
+
+用户指出 v_turb 不直观：应以 **edot**（单位质量、单位时间注入的动能）
+定义驱动（参考 `usr_ext/turb_chem`），且 post 必须在动力学之后运行、
+初始场需要非零速度扰动（否则求解奇异）。全部落地：
+
+- **C++（usr_ext/universal/）**：
+  - `univ_post.h`：`[post.turb]` 键改为 `enabled/edot/mode_max/seed/
+    n_cycle_off`；每周期 rank-0 抽取单个随机平面波模（turb_chem 抽样
+    顺序逐行镜像），约化 `A=∫ρα²/2、B=∫ρα(v_test·v)、M=∫ρ`（固定
+    slot 部分 + host 顺序 float2_t 求和，无原子 → 逐位确定），解
+    `A·conv²+B·conv=edot·dt·M` 得 kick 振幅；`n_cycle_off≥0` 时该周期
+    后关闭驱动（衰减流）。
+  - `registry.h`：enroll 后校验 post 模块 `order` 必须大于其耦合
+    dyn 目标，否则启动硬错（报错文本与前端 xcheck 逐字一致）。
+  - `pars/turb_box.par`：新增 `[ic.seed]` 白噪声初速（0.01·(2rand−1)）。
+  - 验证（turb_edot2/，check_edot.py）：73 周期 t=0.5，
+    ΔE=0.05000000 与 edot·M·T 精确差 5×10⁻¹⁰；M 守恒；
+    v_rms 0.0082→0.2568；KE(T)=0.032945 ≤ 0.05；两次运行 `cmp`
+    逐位一致；sod/post_off/role_sections 回归全过。
+- **前端（本 repo）**：
+  - `descriptors/modules/post.yaml`：post.turb 键与文档换为 edot 体系。
+  - `core/kratos_spec/xchecks.py`：新增 `_check_post`——post order ≤
+    dyn 目标 → error（镜像 C++）；turb 启用 + 无初速通道 → warning
+    （静止奇异）。四个用例过；pytest 239 / vitest 54 / build 通过。
+  - 文档：`user_guide_turb_box.md`（edot 讲解 + 全部参考数字换成
+    新运行）、`universal_pgen_reference.md`（post.turb 表 + 硬约束）。

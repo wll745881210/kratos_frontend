@@ -33,6 +33,21 @@ export const MODULE_SECTIONS: Record<string, string[]> = {
   post: ["post", "post.cooling", "post.turb"],
 };
 
+// Short pickers' labels: make multi-feature types discoverable
+// (turbulence/cooling live INSIDE the post module, not as own types).
+export const MODULE_LABELS: Record<string, string> = {
+  hydro: "hydro",
+  mhd: "mhd",
+  chem_hydro: "chem_hydro",
+  chemistry: "chemistry",
+  multigrid: "multigrid",
+  post: "post (cooling · turbulence · chemistry)",
+};
+
+/** Does this module type read [ic.*] regions? */
+export const isIcType = (type: string): boolean =>
+  (MODULE_SECTIONS[type] ?? []).includes("ic.*");
+
 // Outbound coupling slots per module type (bindings._COUPLINGS);
 // "parasite" is container-handled (exclusive, single target).
 export const COUPLING_SLOTS: Record<string, string[]> = {

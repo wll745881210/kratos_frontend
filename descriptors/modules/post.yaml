@@ -40,18 +40,30 @@ section: post.turb
 title: Turbulence driving (post module)
 order: 54
 doc: |
-  Operator-split stochastic kick with a fixed mode set (deterministic
-  per seed): per step amplitude A = v_turb*sqrt(dt/t_corr)*sqrt(M/S),
-  applied as velocity kicks + consistent energy injection.
+  edot-form stochastic driving (usr_ext/turb_chem convention):
+  each cycle rank 0 draws ONE random plane-wave mode (integer
+  wavevector from [-mode_max, mode_max], random reference point,
+  random unit direction) and a reduction over the post-dynamics
+  state solves the kick amplitude so that the kinetic energy
+  injected is EXACTLY edot*dt per unit mass (quadratic on the
+  current momentum, cross term included).  The module must run
+  AFTER its dynamics target (container enforces a larger
+  'order').  The fluid must not start exactly at rest: seed a
+  velocity perturbation via an [ic.*] expression, e.g.
+  vel_x = 0.01*(2*rand(i,j,k,42)-1), else no energy is injected
+  (the quadratic solve is singular at rest).
 keys:
-  enabled:  { type: bool,  default: false }
-  v_turb:   { type: float, default: 0.1,
-              doc: target velocity dispersion scale }
-  k_turb:   { type: float, default: 6.2831853,
-              doc: fundamental driving wavenumber }
-  n_modes:  { type: int,   default: 8,
-              doc: "number of driving modes (<= 16)" }
-  seed:     { type: int,   default: 42,
-              doc: RNG seed (splitmix64 chain; layout-dependent) }
-  t_corr:   { type: float, default: 1,
-              doc: correlation time of the driving }
+  enabled:      { type: bool,  default: false }
+  edot:         { type: float, default: 0.1,
+                  doc: "specific kinetic-energy injection rate \
+                        (code units L^2/T^3); per-cycle kick \
+                        injects exactly edot*dt per unit mass" }
+  mode_max:     { type: int,   default: 1,
+                  doc: "driving wavevector components drawn \
+                        from [-mode_max, mode_max]" }
+  seed:         { type: int,   default: 42,
+                  doc: "host RNG seed (mt19937_64, rank 0); \
+                        deterministic for fixed layout + seed" }
+  n_cycle_off:  { type: int,   default: -1,
+                  doc: "drive only while i_cycle < n (-1 = always; \
+                        set a finite n for decaying turbulence)" }

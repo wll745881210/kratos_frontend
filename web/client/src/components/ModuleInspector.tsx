@@ -18,6 +18,7 @@ import { SectionCard } from "./SectionCard";
 import {
   addIcRegion,
   icRegions,
+  isIcType,
   missingRoleSections,
   MODULE_TYPES,
   roleSections,
@@ -127,33 +128,43 @@ export function ModuleInspector({
         </label>
       </div>
 
-      {regions.length > 0 && (
-        <div className="inspector-group">IC regions (layered in sort order)</div>
+      {(isIcType(type) || regions.length > 0) && (
+        <>
+          <div className="inspector-group">
+            IC regions (layered in sort order)
+          </div>
+          <div className="hint">
+            uniform base = [init] rho0/pre0/vel0 (Form tab; or
+            [{role}.init] here) · Preview tab renders the stack
+          </div>
+        </>
       )}
       {regions.map((r) => card(r, true))}
-      <div className="add-key">
-        <input
-          list="ic-region-names"
-          placeholder="+ IC region"
-          value={newRegion}
-          onChange={(e) => setNewRegion(e.target.value)}
-          spellCheck={false}
-        />
-        <datalist id="ic-region-names">
-          {REGION_SUGGEST.map((n) => (
-            <option key={n} value={n} />
-          ))}
-        </datalist>
-        <button
-          disabled={!newRegion.trim()}
-          onClick={() => {
-            mutate((s) => (addIcRegion(s, role, newRegion.trim()), s));
-            setNewRegion("");
-          }}
-        >
-          add region
-        </button>
-      </div>
+      {isIcType(type) && (
+        <div className="add-key">
+          <input
+            list="ic-region-names"
+            placeholder="+ IC region"
+            value={newRegion}
+            onChange={(e) => setNewRegion(e.target.value)}
+            spellCheck={false}
+          />
+          <datalist id="ic-region-names">
+            {REGION_SUGGEST.map((n) => (
+              <option key={n} value={n} />
+            ))}
+          </datalist>
+          <button
+            disabled={!newRegion.trim()}
+            onClick={() => {
+              mutate((s) => (addIcRegion(s, role, newRegion.trim()), s));
+              setNewRegion("");
+            }}
+          >
+            add region
+          </button>
+        </div>
+      )}
 
       <div className="inspector-group">Parameters [ {role}.&lt;section&gt; ]</div>
       {paramSections.map((n) => card(n, false))}
@@ -164,9 +175,14 @@ export function ModuleInspector({
             onChange={(e) => e.target.value && addSection(e.target.value)}
           >
             <option value="">+ section…</option>
-            {missing.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
+            {missing.map((n) => {
+              const t = descs.find((d) => d.section === n)?.title;
+              return (
+                <option key={n} value={n}>
+                  {t ? `${n} — ${t}` : n}
+                </option>
+              );
+            })}
           </select>
         </div>
       )}
