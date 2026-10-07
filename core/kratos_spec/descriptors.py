@@ -123,9 +123,7 @@ def coerce_value(type_name: str, value, where: str = ""):
         err(f"value {value!r} does not match type {type_name!r}")
 
 
-def _load_one(path: str) -> Descriptor:
-    with open(path, "r", encoding="utf-8") as fh:
-        raw = yaml.safe_load(fh)
+def _parse_one(raw, path: str) -> Descriptor:
     if not isinstance(raw, dict) or "section" not in raw:
         raise DescriptorError(f"{path}: missing 'section'")
     section = raw["section"]
@@ -147,6 +145,12 @@ def _load_one(path: str) -> Descriptor:
     return Descriptor(section=section, title=raw.get("title", ""),
                       order=int(raw.get("order", 1000)),
                       doc=raw.get("doc", ""), keys=keys, source=path)
+
+
+def _load_one(path: str) -> Descriptor:
+    with open(path, "r", encoding="utf-8") as fh:
+        raw = yaml.safe_load(fh)
+    return _parse_one(raw, path)
 
 
 class Registry:
@@ -203,9 +207,12 @@ def load_registry(root: str) -> Registry:
             if fn.endswith((".yaml", ".yml")) and fn != "meta.schema.yaml":
                 path = os.path.join(dirpath, fn)
                 with open(path, "r", encoding="utf-8") as fh:
-                    head = yaml.safe_load(fh)
-                if isinstance(head, dict) and "section" in head:
-                    descriptors.append(_load_one(path))
+                    # Multi-document files (--- separated) yield several
+                    # section descriptors; files whose first document has
+                    # no 'section' key are data files and are skipped.
+                    for i, raw in enumerate(yaml.safe_load_all(fh)):
+                        if isinstance(raw, dict) and "section" in raw:
+                            descriptors.append(_parse_one(raw, f"{path}#{i}"))
     return Registry(descriptors)
 
 

@@ -178,6 +178,24 @@ def create_app(allowed_roots: list[str] | None = None) -> FastAPI:
                       "doc": k.doc} for k in d.keys.values()],
         } for d in reg.all_descriptors()]}
 
+    @app.get("/api/blocklib")
+    def blocklib():
+        """Module block library (in-memory; mirrors the C++ container).
+
+        modules: type + native sections + parameter docs;
+        couplings: module type -> slot docs (dialog semantics);
+        reserved_roles: role names the container rejects;
+        ic_channels: [R.ic.<region>] channel keys incl x.<species>.
+        """
+        from kratos_spec import bindings
+        reg = load_default()
+        return {
+            "modules": bindings._module_blocks(reg),
+            "couplings": bindings._COUPLINGS,
+            "reserved_roles": bindings._RESERVED_ROLES,
+            "ic_channels": bindings._IC_CHANNELS,
+        }
+
     @app.post("/api/par/parse")
     def par_parse(req: ParseRequest):
         spec = Spec.from_par_text(req.text)

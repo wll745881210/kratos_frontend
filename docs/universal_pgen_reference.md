@@ -25,7 +25,7 @@ universal pgen 把"问题装配"从 C++ `usr.cpp` 移到 par 文件：
 
 ---
 
-## 2. 容器语法（registry.h）
+## 2. 容器语法（registry.h + univ_mesh.h）
 
 ### 2.1 模块声明 `[module.<role>]`
 
@@ -36,21 +36,50 @@ order = 0          # 可选；缺省 = 按节名字典序
 ```
 
 - `<role>` 是模块实例名（任意合法节名后缀）；裸 `[module]` 的 role 为
-  空串 `''`（与裸 `[coupling]` 配对，向后兼容）。
+  空串 `''`（与裸 `[coupling]` 配对）。
 - `type` 必填，取值见上表；未知 type → 运行期 throw 并列出可用类型。
 - `order` 决定 init/step 槽位（显式整数；重复 → 报错）。建议多模块时
   显式写出。
-- **role 作用域覆盖**：`[module.<role>]` 中含 `.` 的键会作为
-  `<section>.<key>` 覆盖注入该模块的私有输入副本（split 取最后一个
-  `.`，故 `bc.expr_inflow.rho = 2` 合法）。模块必须是 role_aware
-  （universal 全部内置模块都是），否则报错。
+- `[module.<role>]` **只接受 `type` 和 `order` 两个键**；其他任何键
+  （包括带点的键）→ 运行期 throw：
+  `univ: [module.flow] key 'xxx' is not accepted here; [module.<role>] takes only 'type' and 'order'.  Put module parameters in section [flow.<section>]`
+- 保留 role 名（与原生节名冲突）会被拒绝：`module coupling device
+  unit mesh boundary cycle file init ic bc species_init dynamics
+  chemistry multigrid post cooling`。
+
+### 2.1a 模块参数 `[<role>.<section>]`（作用域节）
+
+模块参数**不再写在 `[module.<role>]` 里**，而是写成以 role 为前缀的
+节（univ_mesh.h `scoped_input` 在模块读参前把 `[R.<section>]` 重映射为
+原生节名，仅该模块可见）：
+
+```ini
+[flow.dynamics]
+gamma = 1.4
+cfl    = 0.4
+
+[flow.ic.left]
+mask = x < 0.5
+rho  = 1
+```
+
+- **继承 + 覆盖**：全局原生节（如 `[dynamics]`、`[ic.left]`、
+  `[init]`）是所有模块的共享缺省；`[R.<section>]` 按**键**覆盖
+  （同名键后写者胜）。因此可以"全局打底 + 单模块微调"。
+- 隔离性来自前缀本身：其他 role 的键保持 `[R'.<sec>]` 形式，任何模块
+  都不会以该名字读取 → 惰性（无需删除）。
+- 模块类型能读哪些节见 §1 表格（hydro/mhd：`dynamics init ic.*`；
+  chem_hydro 另有 `species_init`；chemistry：`chemistry`；multigrid：
+  `multigrid`；post：`post post.cooling post.turb`）。GUI 的 Diagram
+  inspector 就是按这个清单渲染的。
+- init 阶段同样走作用域（`[flow.init]` 在 `init()` 时也重映射）。
 
 ### 2.2 耦合声明 `[coupling.<role>]`
 
 ```ini
 [coupling.chem]
 parasite = flow        # 寄生耦合（互相设置 q_mod），最多 1 个
-[coupling.post]
+[coupling.subgrid]
 dyn = flow             # 命名耦合槽：值 = 空白分隔的 role 列表
 ```
 
@@ -109,6 +138,8 @@ pre  = 0.1
   整数单元索引）。
 - mhd 的 `b_*` 在面网格上采样（与 std_tst/mhd_st 相同的 clamp-cc 约定，
   保证连续法向 B → 离散 divB=0）。
+- 多模块时 IC 也可作用域化：`[flow.ic.left]` 只作用于 `flow`（覆盖同名
+  全局 `[ic.left]` 的键）；全局 `[ic.*]` 节对所有会读它的模块生效。
 
 ### 3.3 通道 ③：扰动 = 表达式
 
@@ -182,6 +213,8 @@ vel_x = 1 + 0*t        # t 可用：当前模拟时间（每步更新）
 - 未设置的场 = 零梯度（拷贝邻近内部行）。
 - 表达式在**鬼单元**坐标上求值（`x y z` 为鬼单元中心）；变量 `t` 为
   `mesh.p_cyc->t`。
+- 多模块时可作用域化：`[flow.bc.expr_inflow]` 只作用于 `flow` 模块
+  （覆盖全局 `[bc.expr_inflow]` 的键）。
 - 仅 `hydro` 类型内置此 keeper；`inf` 用于其他模块类型 → 运行期报错。
 
 ---
@@ -286,6 +319,7 @@ print_info phy_bnd_type` 等，见 `src/modules/multigrid/multigrid.cpp`）。
 | `usr_ext/universal/pars/briowu_univ.par` | mhd + `b_*` IC |
 | `usr_ext/universal/pars/chem_sod_univ.par` | chem_hydro + species IC（`x.H2`） |
 | `usr_ext/universal/pars/turb_box.par` | hydro + post 湍流驱动（教程 §3） |
-| `usr_ext/universal/pars/mg2_hydro.par` | 多模块 + order + role 覆盖 |
+| `usr_ext/universal/pars/mg2_hydro.par` | 多模块 + order + 作用域节覆盖 |
+| `usr_ext/universal/pars/role_sections.par` | 作用域节传导验证（mg_a 静默 / mg_b 打印） |
 | `usr_ext/universal/pars/cmz_shape.par` | cmz 接线的容器语法表达性工件（不可运行） |
 | 表达式入流 | 见 `docs/implementation.md` M1-B 与 §5 |

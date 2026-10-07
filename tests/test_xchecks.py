@@ -138,3 +138,95 @@ def test_refine_region_inside_domain_clean():
                              "x_max": [0.4, 0.5, 1]}})
     assert not [i for i in s.validate()
                 if i.where.startswith("refine_region_00")]
+
+
+# ---------------------------------------------------------------------------
+# _check_roles: container syntax validation (registry.h / univ_mesh.h)
+# ---------------------------------------------------------------------------
+
+def _spec_with(sections):
+    from kratos_spec.spec import Spec
+    return Spec(version=1, meta={}, sections=sections)
+
+
+def _msgs(spec):
+    from kratos_spec.xchecks import cross_validate
+    return [(i.level, i.where, i.message) for i in cross_validate(spec)]
+
+
+def test_role_reserved_name_error():
+    msgs = _msgs(_spec_with({
+        "module.post": {"type": "post"},
+        "post.turb": {"enabled": 1},
+    }))
+    assert any(l == "error" and "collides with a native section" in m
+               for l, w, m in msgs)
+
+
+def test_module_section_type_order_only():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "hydro", "dynamics.gamma": 1.4},
+    }))
+    assert any(l == "error" and "takes only 'type' and 'order'" in m
+               for l, w, m in msgs)
+
+
+def test_unknown_module_type_error():
+    msgs = _msgs(_spec_with({"module.x": {"type": "flux tubes"}}))
+    assert any(l == "error" and "unknown module type" in m
+               for l, w, m in msgs)
+
+
+def test_role_section_not_consumed_warning():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "hydro"},
+        "flow.multigrid": {"n_iter": 2},
+    }))
+    assert any(l == "warning" and "not consumed by module type" in m
+               for l, w, m in msgs)
+
+
+def test_role_section_consumed_clean():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "hydro"},
+        "flow.dynamics": {"gamma": 1.4},
+        "flow.ic.left": {"mask": "1", "rho": 1},
+    }))
+    assert not any("not consumed" in m for l, w, m in msgs)
+
+
+def test_coupling_unknown_slot_warning():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "hydro"},
+        "module.sg": {"type": "post"},
+        "coupling.sg": {"bogus_slot": "flow"},
+    }))
+    assert any(l == "warning" and "no coupling slot" in m
+               for l, w, m in msgs)
+
+
+def test_coupling_undeclared_target_warning():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "hydro"},
+        "module.sg": {"type": "post"},
+        "coupling.sg": {"dyn": "ghost_role"},
+    }))
+    assert any(l == "warning" and "not a declared role" in m
+               for l, w, m in msgs)
+
+
+def test_coupling_valid_clean():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "hydro"},
+        "module.sg": {"type": "post"},
+        "coupling.sg": {"dyn": "flow"},
+    }))
+    assert msgs == []
+
+
+def test_role_with_dot_error():
+    msgs = _msgs(_spec_with({
+        "module.a.b": {"type": "hydro"},
+    }))
+    assert any(l == "error" and "must not contain '.'" in m
+               for l, w, m in msgs)

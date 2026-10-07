@@ -138,6 +138,19 @@ input, select {
 .gnode.missing { border-color: var(--error); border-style: dashed; opacity: 0.8; }
 .gnode-label { font-weight: 600; }
 .gnode-sub { color: var(--dim); font-size: 11px; margin-top: 2px; }
+.gnode-actions { display: flex; gap: 4px; margin-top: 6px; }
+.gnode-actions button {
+  font-size: 11px; padding: 1px 6px; border-radius: 5px;
+  border: 1px solid var(--line); background: transparent; color: var(--dim);
+  cursor: pointer;
+}
+.gnode-actions button:hover { color: var(--accent); border-color: var(--accent); }
+.react-flow__node.selected .gnode {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--accent); stroke-width: 2;
+}
 
 .gedge.parasite .react-flow__edge-path { stroke-dasharray: 6 4; }
 
@@ -158,3 +171,39 @@ input, select {
 .preview-issues { margin: 0; padding-left: 18px; font-size: 12px; }
 .preview-issues li.error { color: var(--error); }
 .preview-issues li.warning { color: var(--accent); }
+
+/* ---- module inspector (diagram right pane) ---------------------------- */
+.module-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 300px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+.inspector-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.inspector-head .hint {
+  flex: 1;
+}
+.inspector-props {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 0.9em;
+}
+.inspector-props label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.inspector-group {
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted, #888);
+  margin-top: 6px;
+}

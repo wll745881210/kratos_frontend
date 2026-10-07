@@ -1,0 +1,57 @@
+section: post
+title: Generic post-dynamics module
+order: 52
+doc: |
+  univ_post.h: tabulated cooling, turbulence driving, and (future)
+  simple equilibrium chemistry, as operator-split steps after the
+  dynamics module.  All functions off => step() is skipped.  With
+  mesh-level role scoping the GUI writes [R.post.*]; a global
+  [post.*] reaches a single instance directly.
+  Couples to the dynamics module via the 'dyn' slot
+  ([coupling.<post role>] dyn = <flow role>).
+keys:
+  thread_limit: { type: int, default: 64,
+                  doc: GPU threads per block for post kernels }
+---
+section: post.cooling
+title: Tabulated cooling (post module)
+order: 53
+doc: |
+  Modified backward-Euler subcycled cooling on lnT, table = 3 columns
+  (log10 T, log10 Lambda0, log10 Lambda1) on a uniform lnT grid,
+  '#' comments.  CGS internally; gas T from the coupled module's
+  gamma-law EoS (composition NOT accounted).  T < T_cut => inert.
+keys:
+  enabled:    { type: bool, default: false }
+  file:       { type: str,  default: "",
+                doc: "cooling table path; required when enabled" }
+  mu_amu:     { type: float, default: 0.6,
+                doc: "mean particle mass [amu] for number density" }
+  z_z0:       { type: float, default: 0,
+                doc: "metallicity / UV scaling (clamped to [0,1])" }
+  T_cut:      { type: float, default: 10,
+                doc: "cooling switch-off temperature [K]" }
+  heat0_cgs:  { type: float, default: 0,
+                doc: "uniform heating rate coefficient [cgs]" }
+  n_sub:      { type: int,   default: 8,
+                doc: subcycles per dynamics step }
+---
+section: post.turb
+title: Turbulence driving (post module)
+order: 54
+doc: |
+  Operator-split stochastic kick with a fixed mode set (deterministic
+  per seed): per step amplitude A = v_turb*sqrt(dt/t_corr)*sqrt(M/S),
+  applied as velocity kicks + consistent energy injection.
+keys:
+  enabled:  { type: bool,  default: false }
+  v_turb:   { type: float, default: 0.1,
+              doc: target velocity dispersion scale }
+  k_turb:   { type: float, default: 6.2831853,
+              doc: fundamental driving wavenumber }
+  n_modes:  { type: int,   default: 8,
+              doc: "number of driving modes (<= 16)" }
+  seed:     { type: int,   default: 42,
+              doc: RNG seed (splitmix64 chain; layout-dependent) }
+  t_corr:   { type: float, default: 1,
+              doc: correlation time of the driving }

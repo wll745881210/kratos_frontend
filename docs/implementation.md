@@ -493,3 +493,51 @@ cd kratos_frontend
   role 覆盖/legacy 回退）、IC 三通道、表达式文法全文（转自 expr.h 权威注释）、
   边界（含 `inf` expr_inflow）、六个模块的完整键表（默认值逐一对照代码核验）、
   精度约定、错误行为、示例索引。
+
+### 角色作用域重构（2026-10-07，用户主导设计）
+
+**背景**：用户报告 Diagram 三个问题——无法在图内编辑模块参数（双击跳
+Form）、`[module.X]` 里的模块参数到不了 kratos 内部模块（原生节名不
+同）、耦合对话框要求手填"槽名"（对用户无意义）。用户提出替代方案：
+在 universal pgen 内重载 mesh，复制 input 对象并对 map key 按模块修饰，
+使模块 `read`/`init` 读到原生节名。随后拍板：GUI 只写 `[R.<section>]`
+作用域节；彻底抛弃 `[module.R]` 内嵌点键模式（无兼容性包袱）。
+
+**C++ 侧（usr_ext/universal/，切片 P1）**：
+
+- 新增 `univ_mesh.h`：`scoped_input(args, role)`（input 副本 + 把
+  `[R.<sec>]` 键 set 为原生名）+ `univ::mesh_t::enroll_module_scoped`
+  （改写 `reads.back()` / `inits[i]`，init 阶段同样作用域化——修复了
+  旧机制只覆盖 read 的缺口）。
+- `registry.h`：`[module.<role>]` 只接受 `type`/`order`，其他任何键 →
+  运行期 throw（信息与前端 xchecks 镜像）；保留 role 名（17 个原生节
+  名）拒绝；含点 role 拒绝。
+- 全部 wrapper 瘦身：删除 `role_aware_t`/`set_role`/`overrides`/
+  `scoped_args`（`role_aware.h` 整个删除）；模块对作用域化无感知。
+- **语义 = 继承 + 覆盖**：全局原生节是共享缺省，`[R.*]` 逐键覆盖
+  （role_sections.par 验证：全局 `print_info=0` 静默 mg_a，`[mg_b.multigrid]
+  print_info=1` 激活 mg_b）。
+- 验证门（全部通过）：8 个物理回归（sod L1 不变 / briowu / chem /
+  turb_box 逐位复现教程数字 / inflow / post 全关跳过）、mg2_hydro 新语法
+  重写、杂键负测试 EXIT=134 且错误信息与文档一致。
+- trunk pars：`role 'post'` → `'subgrid'`（与保留名冲突，正确被拒）。
+
+**前端侧（切片 P2）**：
+
+- 后端：`bindings.py` 增加 `_COUPLINGS`/`_RESERVED_ROLES`，blocklib 含
+  post；descriptors 新增 `post.yaml`、`ic.yaml`（`ic*` 通配，键
+  `type: any`——表达式值是多 token 列表，`str` 会拒绝）、dynamics 的
+  算法选择键、chemistry Tmin/Tmax；`xchecks._check_roles` 镜像 C++
+  规则（保留名/含点/未知 type/杂键 → error；未消费作用域节 → warning）；
+  新端点 `GET /api/blocklib`（内存生成，不会像生成文件那样过期）。
+- Python `ic_eval`：作用域 IC 求值（首个 IC-capable 模块；全局 `[ic.*]`
+  打底 + `[R.ic.*]` 逐键覆盖；init/species_init/chemistry 同样合并；
+  issue `where` 保留源节名）。
+- 客户端：`ModuleInspector`（图内右侧面板：type/order 编辑 + 参数
+  SectionCard（描述符按去前缀名匹配、写回带前缀名）+ IC 区域增删 +
+  `x.<species>` 自由键）；耦合对话框改为**语义化**（按源类型槽位
+  列出按钮；源无出向槽时自动反向）；`MODULE_TYPES`/槽位以 blocklib
+  为权威、静态回退；Form 页隐藏容器/作用域节（它们的正典编辑位置在
+  Diagram）。
+- 测试：pytest 239 / vitest 54；端到端 API 实测（parse 杂键报错、
+  作用域 IC 求值 rho=1/0.125 正确、emit 往返 key-identical）。

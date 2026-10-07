@@ -8,3 +8,11 @@ keys:
   bnd_thread_limit: { type: int,   doc: threads for boundary kernels }
   rho_floor:        { type: float, doc: density floor }
   tmp_floor:        { type: float, doc: temperature floor }
+  riemann:          { type: str,   default: hllc,
+                     doc: "Riemann solver; hydro: hllc; mhd: hlld
+                       (universal pgen runtime choice; other combos
+                       throw listing available options)" }
+  reconstruct:      { type: str,   default: plm,
+                     doc: "reconstruction (universal pgen runtime choice)" }
+  integrator:       { type: str,   default: rk2,
+                     doc: "time integrator (universal pgen runtime choice)" }

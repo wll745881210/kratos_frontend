@@ -11,11 +11,14 @@ interface Props {
   onRemoveKey: (key: string) => void;
   onRemoveSection: () => void;
   onRenameSection?: (next: string) => void;
+  /** Also offer a free-form key adder when a descriptor exists
+   *  (IC regions need arbitrary x.<species> channels). */
+  rawAddKeys?: boolean;
 }
 
 /** One par section: descriptor-driven form or raw key-value table. */
 export function SectionCard({
-  name, desc, values, issues, onSet, onRemoveKey, onRemoveSection,
+  name, desc, values, issues, onSet, onRemoveKey, onRemoveSection, rawAddKeys,
 }: Props) {
   const [addKey, setAddKey] = useState("");
   const known = new Map((desc?.keys ?? []).map((k) => [k.name, k]));
@@ -71,7 +74,7 @@ export function SectionCard({
           </button>
         </div>
       )}
-      {!desc && (
+      {(!desc || rawAddKeys) && (
         <div className="add-key">
           <RawKeyAdder onAdd={(k) => onSet(k, "")} />
         </div>

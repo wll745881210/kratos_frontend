@@ -48,6 +48,15 @@
   `chem_hydro::parasite` 只设 `q_che`。
 - `mod_base_t::update(news)`：`setup()` → `init_cond(host)` →
   `copy_h2d()`，恰好一次。
+- **作用域输入（univ_mesh.h）**：`mesh.h:39-43` 的 `reads`
+  （`vector<fn(input)>`）与 `inits`（`map<int,fn>`）是 protected 且
+  `enroll_module` 恰好 push 一个读取 lambda（含 order_max 更新）——
+  universal 容器据此在 `enroll_module_scoped` 中改写 `reads.back()` 与
+  `inits[i_init]`，把 `scoped_input(args, role)`（input 副本 + 把
+  `[R.<sec>]` 键 `set()` 为原生节名）传给模块的 `read`/`init`。
+  `input::set` 用 `operator<<` 存完整字符串；`item_map` 是 protected，
+  但拷贝构造可用。全局原生节保持原名传递 → 所有模块共享（继承 +
+  逐键覆盖语义）。
 
 ## 4. 块数据模型（`src/mesh/block/`）
 

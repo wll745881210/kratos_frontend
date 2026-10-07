@@ -28,7 +28,7 @@ function makeOps(): DiagramOps & { calls: string[] } {
     onAddCoupling: (f, k, t) => calls.push(`addCoupling:${f}:${k}:${t}`),
     onRemoveCoupling: (f, k, t) =>
       calls.push(`removeCoupling:${f}:${k}:${t ?? ""}`),
-    onJumpToSection: (s) => calls.push(`jump:${s}`),
+    onInspectRole: (r) => calls.push(`inspect:${r}`),
   };
 }
 
@@ -72,10 +72,28 @@ describe("DiagramView", () => {
     expect(screen.getByText("+ module")).toBeDisabled();
   });
 
-  it("double-click a module node jumps to its section", () => {
+  it("double-click a module node opens its inspector", () => {
     const ops = makeOps();
     render(<DiagramView spec={SPEC} ops={ops} />);
     fireEvent.doubleClick(screen.getByText("chem"));
-    expect(ops.calls).toEqual(["jump:module.chem"]);
+    expect(ops.calls).toEqual(["inspect:chem"]);
+  });
+
+  it("node action buttons edit, delete and couple", () => {
+    const ops = makeOps();
+    render(<DiagramView spec={SPEC} ops={ops} />);
+    // laidOut order: cores, then modules by (order, role) => flow, chem
+    fireEvent.click(screen.getAllByText("edit")[1]);
+    expect(ops.calls).toEqual(["inspect:chem"]);
+
+    ops.calls.length = 0;
+    fireEvent.click(screen.getAllByText("delete")[0]);
+    expect(ops.calls).toEqual(["removeModule:flow"]);
+
+    ops.calls.length = 0;
+    fireEvent.click(screen.getAllByText("link")[1]); // chem -> pick flow
+    // chemistry has the outbound slot (parasite); the dialog offers it
+    fireEvent.click(screen.getByText("parasite"));
+    expect(ops.calls).toEqual(["addCoupling:chem:parasite:flow"]);
   });
 });

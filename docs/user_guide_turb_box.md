@@ -127,11 +127,11 @@ vel0 = 0 0 0               # 静止均匀气体；不写 [ic.*] 时整个域都�
 type = hydro               # 纯流体模块
 order = 0                  # 执行顺序
 
-[module.post]
+[module.subgrid]
 type = post                # 通用后处理模块（冷却/湍流驱动/...）
 order = 1                  # 在 hydro 之后执行
 
-[coupling.post]
+[coupling.subgrid]
 dyn = flow                 # 耦合槽：post 需要一个名为 dyn 的流体模块
 
 # --- 湍流驱动参数 ---

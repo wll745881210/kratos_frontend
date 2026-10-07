@@ -79,9 +79,8 @@ def _mesh_grid(spec: Spec) -> Tuple[List[float], List[float], List[int], List[Is
     return x_min, x_max, n_cell, issues
 
 
-def _species_list(spec: Spec) -> List[str]:
-    chem = spec.sections.get("chemistry", {})
-    sp = chem.get("species", [])
+def _species_list(spec: Spec, chem_section: dict) -> List[str]:
+    sp = chem_section.get("species", [])
     if isinstance(sp, str):
         sp = sp.split()
     if isinstance(sp, (list, tuple)):
@@ -89,10 +88,67 @@ def _species_list(spec: Spec) -> List[str]:
     return []
 
 
+# --------------------------------------------------------------------------
+# Role scoping (mirrors univ_mesh.h scoped_input): when [module.<role>]
+# sections exist, module parameters live in [R.<section>] which the C++
+# container remaps onto native names for that module only; global native
+# sections stay visible to every module as shared defaults, with [R.*]
+# overriding per key.  The preview follows the FIRST IC-capable module
+# (hydro / mhd / chem_hydro) -- one field set is shown.
+# --------------------------------------------------------------------------
+IC_TYPES = ("hydro", "mhd", "chem_hydro")
+CHEM_TYPES = ("chemistry",)
+
+
+def _modules(spec: Spec) -> List[Tuple[str, str]]:
+    out = []
+    for name, sec in spec.sections.items():
+        if name == "module" or name.startswith("module."):
+            role = "" if name == "module" else name[len("module."):]
+            out.append((role, str(sec.get("type", ""))))
+    return out
+
+
+def _scoped_merger(spec: Spec, role: str, chem_role: str):
+    """Native-name -> value maps for init / species_init / chemistry /
+    ic regions, each merged global-first then [R.*] per key."""
+
+    def merged(native: str) -> dict:
+        out = dict(spec.sections.get(native, {}))
+        if role and f"{role}.{native}" in spec.sections:
+            out.update(spec.sections[f"{role}.{native}"])
+        return out
+
+    init = merged("init")
+    sp_init = merged("species_init")
+    # chemistry section belongs to the chemistry module's role
+    chem = dict(spec.sections.get("chemistry", {}))
+    if chem_role and f"{chem_role}.chemistry" in spec.sections:
+        chem.update(spec.sections[f"{chem_role}.chemistry"])
+
+    regions: Dict[str, dict] = {}
+    region_src: Dict[str, str] = {}
+    for name, sec in spec.sections.items():
+        if name.startswith("ic."):
+            r = name[3:]
+            regions.setdefault(r, {}).update(sec)
+            region_src[r] = name
+        elif role and name.startswith(f"{role}.ic."):
+            r = name[len(f"{role}.ic."):]
+            regions.setdefault(r, {}).update(sec)
+            region_src[r] = name
+    return init, sp_init, chem, regions, region_src
+
+
 def build_ic(spec: Spec) -> Tuple[Dict[str, float], List[ICRegion], List[Issue]]:
     """Compile the IC stack from a Spec. Returns (base, regions, issues)."""
     issues: List[Issue] = []
-    init = spec.sections.get("init", {})
+    mods = _modules(spec)
+    ic_role = next((r for r, t in mods if t in IC_TYPES), "")
+    chem_role = next((r for r, t in mods if t in CHEM_TYPES), "")
+    init, sp_init, chem, region_secs, region_src = _scoped_merger(
+        spec, ic_role, chem_role)
+
     base: Dict[str, float] = {}
     base["rho"] = _as_float(init.get("rho0", 0.0))
     base["pre"] = _as_float(init.get("pre0", 0.0))
@@ -104,16 +160,13 @@ def build_ic(spec: Spec) -> Tuple[Dict[str, float], List[ICRegion], List[Issue]]
         for a in range(3):
             base[f"b_{'xyz'[a]}"] = b0[a]
 
-    species = _species_list(spec)
-    sp_init = spec.sections.get("species_init", {})
+    species = _species_list(spec, chem)
     for sp in species:
         base[f"x.{sp}"] = _as_float(sp_init.get(sp, 1e-20), 1e-20)
 
     regions: List[ICRegion] = []
-    for name in sorted(spec.sections):
-        if not name.startswith("ic."):
-            continue
-        sec = spec.sections[name]
+    for name in sorted(region_secs):
+        sec = region_secs[name]
 
         def compile_key(key: str, default: Optional[str]) -> Optional[expr.Program]:
             raw = sec.get(key, default)
@@ -128,8 +181,9 @@ def build_ic(spec: Spec) -> Tuple[Dict[str, float], List[ICRegion], List[Issue]]
             try:
                 return expr.compile(raw)
             except expr.ExprError as e:
-                issues.append(Issue(level="error", where=f"{name}.{key}",
-                                    message=str(e)))
+                issues.append(
+                    Issue(level="error", where=f"{region_src[name]}.{key}",
+                          message=str(e)))
                 return None
 
         mask = compile_key("mask", "1")
@@ -210,7 +264,12 @@ def eval_ic_slice(
     except (TypeError, ValueError):
         t0 = 0.0
 
-    species = _species_list(spec)
+    mods = _modules(spec)
+    _ic_role = next((r for r, t in mods if t in IC_TYPES), "")
+    _chem_role = next((r for r, t in mods if t in CHEM_TYPES), "")
+    _init, _sp_init, chem, _regions, _rsrc = _scoped_merger(
+        spec, _ic_role, _chem_role)
+    species = _species_list(spec, chem)
     names = _channel_names(spec, base, regions)
 
     def state_at(xyz: List[float], ijk: List[int]) -> Dict[str, float]:

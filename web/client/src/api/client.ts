@@ -1,6 +1,6 @@
 /** Typed fetch client for the kratos_server REST API (v1). */
 
-import type { BinPreview, FsEntry, IcPreview, Issue, SectionDescriptor, Spec } from "../model/types";
+import type { BinPreview, Blocklib, FsEntry, IcPreview, Issue, SectionDescriptor, Spec } from "../model/types";
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, init);
@@ -39,6 +39,8 @@ export const api = {
 
   descriptors: () =>
     req<{ sections: SectionDescriptor[] }>("/api/descriptors"),
+
+  blocklib: () => req<Blocklib>("/api/blocklib"),
 
   parsePar: (text: string) =>
     post<{ spec: Spec; issues: Issue[] }>("/api/par/parse", { text }),

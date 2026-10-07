@@ -3,15 +3,26 @@ import { api, ApiError } from "../api/client";
 import { FileBrowser } from "../components/FileBrowser";
 import { ProjectDialog } from "../components/ProjectDialog";
 import { IssuesPanel } from "../components/IssuesPanel";
+import { ModuleInspector } from "../components/ModuleInspector";
 import { SectionCard } from "../components/SectionCard";
 import { TextEditor } from "../components/TextEditor";
 import {
   addCoupling,
   addModule,
+  declaredRoles,
+  isCouplingSection,
+  isModuleSection,
+  isRoleSection,
   removeCoupling,
   removeModule,
 } from "../model/graph";
-import type { Issue, SectionDescriptor, Spec, Value } from "../model/types";
+import type {
+  Blocklib,
+  Issue,
+  SectionDescriptor,
+  Spec,
+  Value,
+} from "../model/types";
 import { DiagramView } from "./DiagramView";
 import { PreviewView } from "./PreviewView";
 import { GlobalsView } from "./GlobalsView";
@@ -66,7 +77,14 @@ export function ParEditor({
   const [browsing, setBrowsing] = useState(false);
   const [showProject, setShowProject] = useState(false);
   const [newSection, setNewSection] = useState("");
+  const [blocklib, setBlocklib] = useState<Blocklib | null>(null);
+  const [inspectRole, setInspectRole] = useState<string | null>(null);
   const saveAs = useRef<HTMLInputElement>(null);
+
+  // ---- module block library (server-authoritative; static fallback) ----
+  useEffect(() => {
+    api.blocklib().then(setBlocklib).catch(() => {});
+  }, []);
 
   // ---- debounced server validation -------------------------------------
   useEffect(() => {
@@ -170,36 +188,21 @@ export function ParEditor({
   };
 
   // ---- diagram callbacks ------------------------------------------------
-  const jumpToSection = useCallback(
-    (section: string) => {
-      void switchTab("form").then(() =>
-        setTimeout(
-          () =>
-            document
-              .getElementById(`sec-${section}`)
-              ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-          50,
-        ),
-      );
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tab, spec, text],
-  );
-
   const diagramOps = useMemo(
     () => ({
       onAddModule: (role: string, type: string) =>
         mutate((s) => (addModule(s, role, type), s)),
-      onRemoveModule: (role: string) =>
-        mutate((s) => (removeModule(s, role), s)),
+      onRemoveModule: (role: string) => {
+        setInspectRole((r) => (r === role ? null : r));
+        mutate((s) => (removeModule(s, role), s));
+      },
       onAddCoupling: (fromRole: string, key: string, toRole: string) =>
         mutate((s) => (addCoupling(s, fromRole, key, toRole), s)),
       onRemoveCoupling: (fromRole: string, key: string, toRole?: string) =>
         mutate((s) => (removeCoupling(s, fromRole, key, toRole), s)),
-      onJumpToSection: jumpToSection,
+      onInspectRole: (role: string | null) => setInspectRole(role),
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [jumpToSection],
+    [],
   );
 
   // ---- save -------------------------------------------------------------
@@ -236,13 +239,19 @@ export function ParEditor({
   };
 
   // ---- ordering ---------------------------------------------------------
+  // The Form tab shows native sections only: module/coupling/role-scoped
+  // sections are edited in the Diagram inspector (their canonical home).
   const ordered = useMemo(() => {
     if (!spec) return [];
-    const names = Object.keys(spec.sections);
-    const rank = (n: string) => matchDesc(descs, n)?.order ?? 10000;
-    return names.sort(
-      (a, b) => rank(a) - rank(b) || names.indexOf(a) - names.indexOf(b),
+    const roles = declaredRoles(spec);
+    const native = Object.keys(spec.sections).filter(
+      (n) =>
+        !isModuleSection(n) &&
+        !isCouplingSection(n) &&
+        !isRoleSection(n, roles),
     );
+    const rank = (n: string) => matchDesc(descs, n)?.order ?? 10000;
+    return native.sort((a, b) => rank(a) - rank(b));
   }, [spec, descs]);
 
   const suggestions = useMemo(() => {
@@ -374,6 +383,7 @@ export function ParEditor({
               key={path ?? "new"}
               spec={spec}
               ops={diagramOps}
+              blocklib={blocklib}
               positions={(spec.meta?.diagram_positions as
                 | Record<string, { x: number; y: number }>
                 | undefined) ?? undefined}
@@ -386,6 +396,16 @@ export function ParEditor({
             />
           </div>
           <div className="side">
+            {inspectRole !== null && spec && (
+              <ModuleInspector
+                spec={spec}
+                descs={descs}
+                issues={issues}
+                role={inspectRole}
+                mutate={mutate}
+                onClose={() => setInspectRole(null)}
+              />
+            )}
             <IssuesPanel issues={issues} />
           </div>
         </div>

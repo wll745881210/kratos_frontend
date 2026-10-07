@@ -27,7 +27,23 @@ def test_blocklib_content(gen):
     lib = json.loads((gen / "blocklib.json").read_text())
     types = [m["type"] for m in lib["modules"]]
     assert types == ["hydro", "mhd", "chem_hydro", "chemistry",
-                     "multigrid"]
+                     "multigrid", "post"]
+    # module blocks carry parameter docs from the descriptors
+    assert "gamma" in {k["name"]
+                       for k in lib["modules"][0]["params"]["dynamics"]}
+    post = lib["modules"][5]
+    assert "post.cooling" in post["sections"]
+    assert "enabled" in {k["name"]
+                         for k in post["params"]["post.cooling"]}
+    # coupling capabilities + reserved roles for the GUI dialog
+    assert lib["couplings"]["post"]["dyn"]
+    assert "module" not in lib["couplings"]
+    assert lib["reserved_roles"] == [
+        "module", "coupling", "device", "unit",
+        "mesh", "boundary", "cycle", "file",
+        "init", "ic", "bc", "species_init",
+        "dynamics", "chemistry", "multigrid", "post", "cooling",
+    ]
     # module blocks carry parameter docs from the descriptors
     assert "gamma" in {k["name"]
                        for k in lib["modules"][0]["params"]["dynamics"]}

@@ -36,6 +36,19 @@ export interface FsEntry {
   type: "file" | "dir";
 }
 
+/** Module block library (GET /api/blocklib; mirrors the C++ container). */
+export interface BlocklibModule {
+  type: string;
+  sections: string[]; // native section names the module reads
+  params: Record<string, KeySpec[]>;
+}
+
+export interface Blocklib {
+  modules: BlocklibModule[];
+  couplings: Record<string, Record<string, string>>; // type -> slot -> doc
+  reserved_roles: string[];
+}
+
 /** IC slice preview result (server ic_eval). */
 export interface IcPreview {
   axis: number;

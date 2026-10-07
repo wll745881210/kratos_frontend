@@ -212,3 +212,46 @@ def test_endpoint_bad_axis():
                     json={"spec": spec.to_dict(), "axis": 5})
     assert r.status_code == 200
     assert r.json()["issues"][0]["level"] == "error"
+
+
+def test_role_scoped_ic_overrides_global():
+    """[flow.ic.*] overrides global [ic.*] per region; [flow.init]
+    overrides global [init] per key; chem species from [chem.chemistry]."""
+    spec = _spec_from_text("""
+[mesh]
+x_min = 0 0 0
+x_max = 1 1 1
+n_cell_global = 128 2 1
+[init]
+rho0 = 9
+pre0 = 9
+[module.flow]
+type = hydro
+order = 0
+[module.chem]
+type = chemistry
+order = 1
+[chem.chemistry]
+species = H2 H
+[flow.init]
+rho0 = 1
+pre0 = 1
+[ic.left]
+mask = x < 0.5
+rho = 5
+[flow.ic.left]
+rho = 2
+[flow.ic.right]
+mask = x geq 0.5
+rho = 0.125
+""")
+    out = ic_eval.eval_ic_slice(spec, axis=2, max_dim=128)
+    assert out["issues"] == []
+    row = out["fields"]["rho"]["data"][0]
+    # left: global rho=5 overridden by [flow.ic.left] rho=2; pre from
+    # global [ic.left] is unset -> base pre0=1 (flow.init overrides init)
+    assert row[10] == 2
+    assert out["fields"]["pre"]["data"][0][10] == 1
+    assert row[100] == 0.125  # scoped-only region
+    # species channels exist (H2/H from chem.chemistry)
+    assert "x.H2" in out["fields"]

@@ -51,7 +51,9 @@ def _load_yaml(path: Path) -> Any:
 
 
 # Module types registered by the universal pgen (usr_ext/universal/
-# usr.cpp); each lists the par sections it consumes.
+# usr.cpp); each lists the NATIVE par sections it consumes.  Under
+# mesh-level role scoping the GUI writes these as [R.<section>] for a
+# module instantiated with role R (see univ_mesh.h scoped_input).
 _MODULE_TYPES: List[Dict[str, Any]] = [
     {"type": "hydro", "sections": ["dynamics", "init", "ic.*"]},
     {"type": "mhd", "sections": ["dynamics", "init", "ic.*"]},
@@ -59,6 +61,30 @@ _MODULE_TYPES: List[Dict[str, Any]] = [
      "sections": ["dynamics", "init", "ic.*", "species_init"]},
     {"type": "chemistry", "sections": ["chemistry"]},
     {"type": "multigrid", "sections": ["multigrid"]},
+    {"type": "post", "sections": ["post", "post.cooling", "post.turb"]},
+]
+
+# Coupling capabilities (registry.h + couplable.h).  'parasite' is
+# container-handled (not a named slot); named slots come from
+# couple_slots() overrides.  Key = module type owning the coupling
+# section [coupling.<its role>]; value = slot -> doc.
+_COUPLINGS: Dict[str, Dict[str, str]] = {
+    "chemistry": {
+        "parasite": "host module role to parasite (bidirectional "
+                    "q_che binding; chem_hydro/chem_mhd target)",
+    },
+    "post": {
+        "dyn": "dynamics module role providing the flow field",
+    },
+}
+
+# Role names rejected by the container (registry.h reserved set):
+# they collide with native section names once [R.<sec>] is remapped.
+_RESERVED_ROLES: List[str] = [
+    "module", "coupling", "device", "unit",
+    "mesh", "boundary", "cycle", "file",
+    "init", "ic", "bc", "species_init",
+    "dynamics", "chemistry", "multigrid", "post", "cooling",
 ]
 
 
@@ -101,6 +127,8 @@ def emit_blocklib(reg, dest: Path) -> Path:
         ).isoformat(),
         "grammar": grammar,
         "modules": _module_blocks(reg),
+        "couplings": _COUPLINGS,
+        "reserved_roles": _RESERVED_ROLES,
         "ic_channels": _IC_CHANNELS,
         "ic_recipes": recipes_doc["recipes"],
     }

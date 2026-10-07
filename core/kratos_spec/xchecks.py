@@ -195,4 +195,130 @@ def _check_refine(spec) -> list[Issue]:
 def cross_validate(spec) -> list[Issue]:
     """Cross-field checks; appended to Spec.validate()."""
     return (_check_mesh(spec) + _check_unit(spec)
-            + _check_refine(spec))
+            + _check_refine(spec) + _check_roles(spec))
+
+
+# ---------------------------------------------------------------------------
+# Container syntax: [module.<role>] / [coupling.<role>] / [R.<section>].
+# Mirrors registry.h (reserved roles, type/order-only, error text) and
+# univ_mesh.h (role prefix stripping).  Kept in sync with bindings.
+# ---------------------------------------------------------------------------
+
+_CONTAINER_SECTIONS = {"module", "coupling"}
+
+
+def _module_secs() -> dict[str, list[str]]:
+    """module type -> native section patterns (bindings._MODULE_TYPES)."""
+    from .bindings import _MODULE_TYPES
+    return {m["type"]: list(m["sections"]) for m in _MODULE_TYPES}
+
+
+def _coupling_slots() -> dict[str, dict]:
+    """module type -> valid coupling slots (bindings._COUPLINGS)."""
+    from .bindings import _COUPLINGS
+    return _COUPLINGS
+
+
+def _reserved_roles() -> list[str]:
+    from .bindings import _RESERVED_ROLES
+    return _RESERVED_ROLES
+
+
+def _sec_matches(native: str, pattern: str) -> bool:
+    if pattern.endswith(".*"):
+        return native.startswith(pattern[:-2])
+    return native == pattern
+
+
+def _check_roles(spec) -> list[Issue]:
+    issues: list[Issue] = []
+    sections = getattr(spec, "sections", {})
+    if not isinstance(sections, dict):
+        return issues
+    secs = _module_secs()
+    couplings = _coupling_slots()
+    reserved = set(_reserved_roles())
+
+    # declared roles: [module] (role '') + [module.<role>]
+    declared: dict[str, str] = {}
+    for name in sections:
+        if name == "module":
+            declared[""] = str(sections[name].get("type", ""))
+        elif name.startswith("module."):
+            declared[name[7:]] = str(sections[name].get("type", ""))
+
+    for role, t in sorted(declared.items()):
+        if role in reserved:
+            issues.append(Issue(
+                "error", f"module.{role}" if role else "module",
+                f"role '{role}' collides with a native section name; "
+                "pick another role (kratos throws at startup)"))
+        if "." in role:
+            issues.append(Issue(
+                "error", f"module.{role}",
+                f"role '{role}' must not contain '.'"))
+        if t and t not in secs:
+            issues.append(Issue(
+                "error", f"module.{role}" if role else "module",
+                f"unknown module type '{t}' (available: "
+                + ", ".join(sorted(secs)) + ")"))
+
+    # [module.<role>] accepts ONLY type/order (registry.h hard error)
+    for name in sections:
+        if name == "module" or name.startswith("module."):
+            for key in sections[name]:
+                if key not in ("type", "order"):
+                    issues.append(Issue(
+                        "error", name,
+                        f"key '{key}' is not accepted here; "
+                        "[module.<role>] takes only 'type' and 'order'. "
+                        "Put module parameters in section "
+                        f"[{name[7:]}.<section>]"))
+
+    # role-scoped sections: [R.<native>] with R declared
+    for name in sorted(sections):
+        if "." not in name:
+            continue
+        if name.split(".", 1)[0] in _CONTAINER_SECTIONS:
+            continue
+        prefix, native = name.split(".", 1)
+        if prefix not in declared:
+            continue
+        t = declared[prefix]
+        patterns = secs.get(t, [])
+        if patterns and not any(_sec_matches(native, p)
+                                for p in patterns):
+            issues.append(Issue(
+                "warning", name,
+                f"section '{native}' is not consumed by module type "
+                f"'{t}' (reads: {', '.join(patterns)})"))
+
+    # coupling sections: role must be declared, keys must be valid
+    # slots for that role's type, values must reference declared roles
+    for name in sorted(sections):
+        if name == "coupling" or not name.startswith("coupling."):
+            continue
+        role = name[9:]
+        if role not in declared:
+            issues.append(Issue(
+                "warning", name,
+                f"coupling section for undeclared role '{role}'"))
+            continue
+        t = declared[role]
+        slots = couplings.get(t, {})
+        for key, val in sections[name].items():
+            if key not in slots:
+                issues.append(Issue(
+                    "warning", name,
+                    f"module type '{t}' has no coupling slot '{key}' "
+                    + (f"(slots: {', '.join(slots)})"
+                       if slots else "(it declares no couplings)")))
+            targets = (val if isinstance(val, list)
+                       else [val] if isinstance(val, str) else [])
+            for tgt in targets:
+                if isinstance(tgt, str) and tgt not in declared:
+                    issues.append(Issue(
+                        "warning", name,
+                        f"coupling target '{tgt}' is not a declared role"))
+
+    return issues

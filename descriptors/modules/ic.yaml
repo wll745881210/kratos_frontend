@@ -1,0 +1,24 @@
+section: ic*
+title: IC regions (expression layering)
+order: 56
+doc: |
+  univ_hydro.h ic_t: regions layered in lexicographic section order;
+  a region only overwrites the fields it sets where its mask != 0.
+  Section names are region names (ic.left, ic.midpatch, ...).
+  All values are expressions over x, y, z, t, i, j, k (i/j/k =
+  cell indices); word operators (geq/leq/neq/and/or/not) are needed
+  because par values cannot contain '='.
+  Species channels x.<name> (number fraction, auto-normalized) are
+  dynamic keys -- see blocklib ic_channels; they are not listed here.
+  Under role scoping the GUI writes [R.ic.<region>].
+keys:
+  mask:  { type: any,  default: "1",
+           doc: "region mask expression; 0 = skip cell" }
+  rho:   { type: any,  doc: "density expression" }
+  pre:   { type: any,  doc: "pressure expression" }
+  vel_x: { type: any,  doc: "velocity x expression" }
+  vel_y: { type: any,  doc: "velocity y expression" }
+  vel_z: { type: any,  doc: "velocity z expression" }
+  b_x:   { type: any,  doc: "magnetic field x expression (mhd)" }
+  b_y:   { type: any,  doc: "magnetic field y expression (mhd)" }
+  b_z:   { type: any,  doc: "magnetic field z expression (mhd)" }

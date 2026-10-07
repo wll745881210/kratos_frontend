@@ -9,3 +9,12 @@ doc: |
 keys:
   species: { type: "str[]", default: [],
              doc: species names; empty = pure hydro/MHD }
+  reaction_file: { type: str, default: "",
+             doc: "reaction network table (empty = passive species,
+                   prints 'Skipping std reactions')" }
+  Tmin: { type: float, default: 2.7,
+             doc: "solver temperature floor [K]; the energy is rescaled
+                   by Tmin/T each solver pass -- in unitless unit systems
+                   set this tiny (e.g. 1e-30) or the energy explodes" }
+  Tmax: { type: float, default: 1.0e+7,
+             doc: "solver temperature ceiling [K] (same rescale caveat)" }

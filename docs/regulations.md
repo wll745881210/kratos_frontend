@@ -40,10 +40,10 @@
 
 | # | 工件 | 位置 | 说明 |
 |---|---|---|---|
-| 1 | C++ wrapper | trunk `usr_ext/universal/univ_<name>.h` | 继承 trunk 模块基类 + `couplable_t` + `role_aware_t`；`read()` 先 `scoped_args()` 再走 trunk 读入链；**不得复制** trunk 的参数解析 |
+| 1 | C++ wrapper | trunk `usr_ext/universal/univ_<name>.h` | 继承 trunk 模块基类 + `couplable_t`；`read(const input&)` 直通 trunk 读入链（**不得复制** trunk 的参数解析）；作用域化由容器（`univ::mesh_t::enroll_module_scoped`）自动完成，wrapper 无需配合 |
 | 2 | 注册 | trunk `usr_ext/universal/usr.cpp` | `register_module_t<T>("<name>")`；type 名小写、与 trunk 类族一致 |
-| 3 | 参数描述文件 | 前端 `descriptors/modules/<name>.yaml` | section 名、键类型/默认值/文档；未知键政策 = warning |
-| 4 | 块库条目 | `web/client/src/model/graph.ts` 的 `MODULE_TYPES` | 当前手工维护（TODO：收敛到单一 yaml 后由 bindings 生成） |
+| 3 | 参数描述文件 | 前端 `descriptors/modules/<name>.yaml` | section 名、键类型/默认值/文档；未知键政策 = warning；ic 类用 `ic*` 通配 + `type: any`（表达式值是多 token 列表） |
+| 4 | 块库条目 | `core/kratos_spec/bindings.py` 的 `_MODULE_TYPES`（server `/api/blocklib` 权威；`web/client/src/model/graph.ts` 常量为静态回退） | 条目含 type + 原生节清单 + 耦合槽（`_COUPLINGS`） |
 | 5 | 测试 par | trunk `usr_ext/universal/pars/<case>.par` | 能真实运行的最小用例 |
 | 6 | 验证脚本 | `~/scratch/tst_kratos_frontend/<case>/` 或前端 `tests/` | 有明确数值判据；**每个数字必须可追溯到实际产物**（反例见 `docs/rand_verification.md` 诚信事件记录） |
 | 7 | 回归 | 既有测试全部通过 | pytest / vitest / sod·briowu·inflow·chem·kh·base_chain 物理回归 |
@@ -58,9 +58,10 @@
 1. **耦合**：槽名小写、语义命名（如 `"dyn"`）；`couple_slots()` 声明期望目标
    类型；容器对"槽目标类型不符"报 error 并列出可用角色。双向绑定
    （chemistry::parasite 模式）由容器只调一侧，wrapper 注释标明调哪侧。
-2. **role 覆盖**：wrapper 通过 `role_aware_t` 接收 `[module.<role>]` 内
-   `<section>.<key> = value` 覆盖（在最后一个 `.` 处拆分）；非 role_aware
-   模块收到覆盖键 → error。
+2. **参数作用域**：模块参数写在 `[<role>.<section>]` 作用域节（GUI 唯一
+   写法）；容器 `scoped_input` 把它重映射为原生节名注入该模块的私有输入
+   副本，全局原生节作为共享缺省、作用域键覆盖（后写者胜）。wrapper 对此
+   无感知。`[module.<role>]` 只接受 `type`/`order`，其余键 → error。
 3. **错误信息**：所有"未知类型/未知槽/缺少共模块"错误必须列出当前可用项
    （参照 `registry.h` / `couplable_t` 既有风格）。
 4. **调度**：模块默认按 `[module.<role>]` 的 `order`（缺省 = 字典序位次）

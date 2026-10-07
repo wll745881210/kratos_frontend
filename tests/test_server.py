@@ -246,3 +246,17 @@ def test_preview_bin_bad_field(client):
 def test_preview_bin_outside_roots(client):
     r = client.post("/api/preview/bin", json={"path": "/etc/hostname"})
     assert r.status_code == 403
+
+
+def test_blocklib_endpoint(client):
+    r = client.get("/api/blocklib")
+    assert r.status_code == 200
+    lib = r.json()
+    types = [m["type"] for m in lib["modules"]]
+    assert types == ["hydro", "mhd", "chem_hydro", "chemistry",
+                     "multigrid", "post"]
+    assert lib["couplings"]["post"]["dyn"]
+    assert "ic" in lib["reserved_roles"]
+    post = lib["modules"][5]
+    assert "post.turb" in post["sections"]
+    assert "v_turb" in {k["name"] for k in post["params"]["post.turb"]}

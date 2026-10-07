@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   addCoupling,
+  addIcRegion,
   addModule,
+  declaredRoles,
   Graph,
+  icRegions,
+  isRoleSection,
+  missingRoleSections,
+  nativeMatches,
   removeCoupling,
+  removeIcRegion,
   removeModule,
+  rolePrefixOf,
+  roleSections,
   setModuleProp,
+  speciesChannelKeys,
   specToGraph,
+  stripRole,
 } from "./graph";
 import type { Spec } from "./types";
 
@@ -137,5 +148,99 @@ describe("mutations", () => {
     expect(g.nodes.filter((n) => n.kind === "module")).toHaveLength(2);
     expect(g.edges).toHaveLength(1);
     expect(g.edges[0]).toMatchObject({ key: "gravity", fromRole: "flow" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// role-scoped sections / IC regions (univ_mesh.h conventions)
+// ---------------------------------------------------------------------------
+
+const SCOPED: Spec = {
+  version: 1,
+  meta: {},
+  sections: {
+    mesh: { n_cell_global: [64, 2, 1] },
+    "module.flow": { type: "hydro", order: 0 },
+    "module.sg": { type: "post", order: 1 },
+    "flow.dynamics": { gamma: 1.4 },
+    "flow.ic.left": { mask: "x < 0.5", rho: 1 },
+    "flow.ic.right": { mask: "x geq 0.5", rho: 0.125 },
+    "flow.ic.left.x.H2": {},
+    "coupling.sg": { dyn: "flow" },
+  },
+};
+
+describe("role sections", () => {
+  it("declaredRoles / rolePrefixOf / stripRole", () => {
+    expect(declaredRoles(SCOPED).sort()).toEqual(["flow", "sg"]);
+    expect(rolePrefixOf("flow.ic.left")).toBe("flow");
+    expect(stripRole("flow.ic.left")).toBe("ic.left");
+    expect(stripRole("mesh")).toBe("mesh");
+  });
+
+  it("isRoleSection only for declared roles", () => {
+    const roles = declaredRoles(SCOPED);
+    expect(isRoleSection("flow.dynamics", roles)).toBe(true);
+    expect(isRoleSection("module.flow", roles)).toBe(false);
+    expect(isRoleSection("mesh", roles)).toBe(false);
+    // a native dotted section whose prefix is not a declared role
+    expect(isRoleSection("post.cooling", roles)).toBe(false);
+  });
+
+  it("roleSections lists scoped sections", () => {
+    expect(roleSections(SCOPED, "flow")).toEqual([
+      "flow.dynamics",
+      "flow.ic.left",
+      "flow.ic.left.x.H2",
+      "flow.ic.right",
+    ]);
+  });
+
+  it("icRegions + species channels", () => {
+    expect(icRegions(SCOPED, "flow")).toEqual(["left", "left.x.H2", "right"]);
+    // "left.x.H2" is itself parsed as a region named "left.x.H2" --
+    // species channels are KEYS, so this section is a naming trap the
+    // xchecks warn about; model stays literal.
+    expect(speciesChannelKeys(SCOPED.sections["flow.ic.left"])).toEqual([]);
+  });
+
+  it("missingRoleSections suggests what a module can still take", () => {
+    expect(missingRoleSections(SCOPED, "flow", "hydro")).toEqual(["init"]);
+    expect(missingRoleSections(SCOPED, "sg", "post")).toEqual([
+      "post",
+      "post.cooling",
+      "post.turb",
+    ]);
+  });
+
+  it("addIcRegion / removeIcRegion round-trip", () => {
+    const s = structuredClone(SCOPED);
+    addIcRegion(s, "flow", "midpatch");
+    expect(s.sections["flow.ic.midpatch"]).toEqual({});
+    removeIcRegion(s, "flow", "midpatch");
+    expect(s.sections["flow.ic.midpatch"]).toBeUndefined();
+  });
+
+  it("removeModule drops role sections + couplings", () => {
+    const s = structuredClone(SCOPED);
+    removeModule(s, "flow");
+    expect(s.sections["flow.dynamics"]).toBeUndefined();
+    expect(s.sections["flow.ic.left"]).toBeUndefined();
+    expect(s.sections["coupling.sg"]).toBeUndefined(); // dyn target gone
+    expect(s.sections["module.flow"]).toBeUndefined();
+  });
+
+  it("addModule rejects reserved roles", () => {
+    const s = structuredClone(SCOPED);
+    addModule(s, "post", "post");
+    expect(s.sections["module.post"]).toBeUndefined();
+    addModule(s, "subgrid", "post");
+    expect(s.sections["module.subgrid"]).toEqual({ type: "post" });
+  });
+
+  it("nativeMatches patterns", () => {
+    expect(nativeMatches("ic.left", "ic.*")).toBe(true);
+    expect(nativeMatches("init", "init")).toBe(true);
+    expect(nativeMatches("init", "ic.*")).toBe(false);
   });
 });
