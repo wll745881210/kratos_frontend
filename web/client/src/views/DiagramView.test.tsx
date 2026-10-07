@@ -3,8 +3,9 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it } from "vitest";
+import { specToGraph } from "../model/graph";
 import type { Spec } from "../model/types";
-import { DiagramView, type DiagramOps } from "./DiagramView";
+import { DiagramView, flowEdges, type DiagramOps } from "./DiagramView";
 
 beforeAll(() => {
   globalThis.ResizeObserver = class {
@@ -115,8 +116,20 @@ describe("DiagramView", () => {
 
     ops.calls.length = 0;
     fireEvent.click(screen.getAllByText("link")[1]); // chem -> pick flow
-    // chemistry has the outbound slot (parasite); the dialog offers it
-    fireEvent.click(screen.getByText("parasite"));
+    // chemistry declares the parasite slot; the dialog offers declarer.slot
+    fireEvent.click(screen.getByText("+ chem.parasite"));
     expect(ops.calls).toEqual(["addCoupling:chem:parasite:flow"]);
+  });
+
+  it("renders coupling edges in data-flow direction (provider -> declarer)", () => {
+    // SPEC couples chem (parasite) to flow: the RENDERED edge must have
+    // flow (provider) as the React Flow source, chem (declarer) target.
+    const g = specToGraph(SPEC);
+    const edges = flowEdges(g);
+    expect(edges.length).toBe(1);
+    expect(edges[0].source).toBe("module:flow");
+    expect(edges[0].target).toBe("module:chem");
+    // model-level identity (edge id) stays declarer-first
+    expect(edges[0].id).toContain("cpl:chem:parasite:flow");
   });
 });

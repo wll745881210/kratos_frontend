@@ -26,6 +26,7 @@ import "reactflow/dist/style.css";
 import {
   COUPLING_SLOTS,
   CORE_SECTIONS,
+  couplingSection,
   type Graph,
   MODULE_LABELS,
   MODULE_TYPES,
@@ -114,6 +115,21 @@ function KratosNode({ data }: NodeProps<NodeData>) {
 
 const nodeTypes = { kratos: KratosNode };
 
+// Edges render in DATA-FLOW direction: the coupling PROVIDER (e.g. the
+// hydro that post's dyn slot binds to) is upstream, the slot DECLARER
+// ([coupling.<role>] owner) downstream. GEdge.fromRole/toRole keep the
+// declarer/provider roles for mutations; only the rendering flips.
+export function flowEdges(g: Graph): Edge[] {
+  return g.edges.map((e) => ({
+    id: e.id,
+    source: e.toId,
+    target: e.fromId,
+    label: e.parasite ? "parasite" : e.key,
+    animated: e.parasite,
+    className: e.parasite ? "gedge parasite" : "gedge",
+  }));
+}
+
 // Columnar auto-layout: core sections left, modules right (by order, then
 // role). Dragging is free-form and persisted to spec.meta (M2.4).
 function layout(g: Graph): { nodes: Node<NodeData>[]; edges: Edge[] } {
@@ -153,15 +169,7 @@ function layout(g: Graph): { nodes: Node<NodeData>[]; edges: Edge[] } {
       },
     }),
   );
-  const edges: Edge[] = g.edges.map((e) => ({
-    id: e.id,
-    source: e.fromId,
-    target: e.toId,
-    label: e.parasite ? "parasite" : e.key,
-    animated: e.parasite,
-    className: e.parasite ? "gedge parasite" : "gedge",
-  }));
-  return { nodes, edges };
+  return { nodes, edges: flowEdges(g) };
 }
 
 const stripModule = (id: string) => id.replace(/^module:/, "");
@@ -255,11 +263,34 @@ export function DiagramView({
   // user's pick (defaulting to the first candidate).
   const target = couple?.target ?? (linkTarget || linkCandidates[0] || "");
 
+  // The dialog's "peer": fixed after a handle drag, picked (select)
+  // otherwise.  Rendered at the appropriate side of the flow arrow.
+  const peerPick = !couple ? null : couple.target !== undefined ? (
+    <b>{couple.target || "module"}</b>
+  ) : linkCandidates.length ? (
+    <select
+      value={linkTarget || linkCandidates[0] || ""}
+      onChange={(e) => setLinkTarget(e.target.value)}
+    >
+      {linkCandidates.map((r) => (
+        <option key={r} value={r}>
+          {r || "module"}
+        </option>
+      ))}
+    </select>
+  ) : (
+    <span className="hint">no other module to couple to</span>
+  );
+
+  // A handle drag ends at the DOWNSTREAM node's target (left) handle:
+  // that node is the coupling declarer, the drag source the provider.
+  // (React Flow reports connection.source = source-handle node, so the
+  // declarer is c.target — both drag directions yield the same coupling.)
   const onConnect = useCallback((c: Connection) => {
     if (!c.source || !c.target) return;
     setSlotName("");
     setLinkTarget("");
-    setCouple({ source: stripModule(c.source), target: stripModule(c.target) });
+    setCouple({ source: stripModule(c.target), target: stripModule(c.source) });
   }, []);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -381,6 +412,7 @@ export function DiagramView({
         edges={edgesSel}
         nodeTypes={nodeTypes}
         onConnect={onConnect}
+        connectionRadius={34}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={() => {
@@ -421,29 +453,28 @@ export function DiagramView({
       {couple && (
         <div className="coupling-dialog">
           <div>
-            couple <b>{couple.source || "module"}</b>{" "}
-            {srcSlots.length ? "→" : "←"}{" "}
-            {couple.target !== undefined ? (
-              <b>{couple.target || "module"}</b>
-            ) : linkCandidates.length ? (
-              <select
-                value={linkTarget || linkCandidates[0] || ""}
-                onChange={(e) => setLinkTarget(e.target.value)}
-              >
-                {linkCandidates.map((r) => (
-                  <option key={r} value={r}>
-                    {r || "module"}
-                  </option>
-                ))}
-              </select>
+            couple{" "}
+            {srcSlots.length ? (
+              // data flow: provider -> declarer
+              <>
+                {peerPick} → <b>{couple.source || "module"}</b>
+              </>
             ) : (
-              <span className="hint">no other module to couple to</span>
+              // declarer has no slots: peer declares, data flows this way
+              <>
+                <b>{couple.source || "module"}</b> → {peerPick}
+              </>
             )}
           </div>
           {srcSlots.length > 0 ? (
             srcSlots.map((s) => (
-              <button key={s} disabled={!target} onClick={() => commitCouple(couple.source, s, target)}>
-                {s === "parasite" ? "parasite" : `+ ${s}`}
+              <button
+                key={s}
+                disabled={!target}
+                title={`[${couplingSection(couple.source)}] ${s} = ${target || "?"}`}
+                onClick={() => commitCouple(couple.source, s, target)}
+              >
+                + {couple.source || "module"}.{s}
               </button>
             ))
           ) : tgtSlots.length > 0 && target ? (
@@ -452,8 +483,12 @@ export function DiagramView({
                 {srcType || "?"} has no outbound slots — couple as:
               </span>
               {tgtSlots.map((s) => (
-                <button key={s} onClick={() => commitCouple(target, s, couple.source)}>
-                  {s === "parasite" ? "parasite" : `+ ${s}`} of {target}
+                <button
+                  key={s}
+                  title={`[${couplingSection(target)}] ${s} = ${couple.source || "?"}`}
+                  onClick={() => commitCouple(target, s, couple.source)}
+                >
+                  + {target}.{s}
                 </button>
               ))}
             </>

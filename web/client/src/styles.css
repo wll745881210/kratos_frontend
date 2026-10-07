@@ -155,6 +155,16 @@ input, select {
 
 .gedge.parasite .react-flow__edge-path { stroke-dasharray: 6 4; }
 
+/* Bigger, easier-to-grab connection handles (default is a 6px dot).
+   connectionRadius (34px, on <ReactFlow>) additionally snaps drags that
+   merely pass NEAR a handle. */
+.react-flow__handle {
+  width: 13px; height: 13px;
+  background: var(--accent);
+  border: 2px solid var(--card);
+}
+.react-flow__handle.connecting { background: var(--error); }
+
 .coupling-dialog {
   position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
   display: flex; gap: 8px; align-items: center; z-index: 20;
