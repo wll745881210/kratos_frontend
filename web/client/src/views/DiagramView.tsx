@@ -30,13 +30,15 @@ import {
   MODULE_LABELS,
   MODULE_TYPES,
   moduleNodeId,
+  moduleRoleProblem,
   moduleType,
   specToGraph,
 } from "../model/graph";
 import type { Blocklib, Spec } from "../model/types";
 
 export interface DiagramOps {
-  onAddModule: (role: string, type: string) => void;
+  /** returns an error message when the module was NOT added, else null */
+  onAddModule: (role: string, type: string) => string | null;
   onRemoveModule: (role: string) => void;
   onAddCoupling: (fromRole: string, key: string, toRole: string) => void;
   onRemoveCoupling: (fromRole: string, key: string, toRole?: string) => void;
@@ -322,11 +324,26 @@ export function DiagramView({
   const srcSlots = couple ? slotsOf(srcType) : [];
   const tgtSlots = couple ? slotsOf(tgtType) : [];
 
+  const proposedRole = newRole.trim();
+  const roleProblem = proposedRole
+    ? moduleRoleProblem(proposedRole, roles)
+    : null;
+  const suggest: Record<string, string> = {
+    post: "subgrid",
+    hydro: "flow",
+    mhd: "mhd_flow",
+    chem_hydro: "chem",
+    chemistry: "chem",
+    multigrid: "mg",
+  };
+
   return (
     <div className="diagram-wrap">
       <div className="diagram-toolbar">
         <input
-          placeholder="new module role"
+          placeholder={
+            proposedRole ? "new module role" : `e.g. ${suggest[newType] ?? newType}`
+          }
           value={newRole}
           onChange={(e) => setNewRole(e.target.value)}
           spellCheck={false}
@@ -342,17 +359,20 @@ export function DiagramView({
           ))}
         </select>
         <button
-          disabled={!newRole.trim() || roles.includes(newRole.trim())}
+          disabled={!proposedRole || roleProblem !== null}
+          title={roleProblem ?? undefined}
           onClick={() => {
-            ops.onAddModule(newRole.trim(), newType);
+            const err = ops.onAddModule(proposedRole, newType);
+            if (err) return; // normally pre-empted by the disabled state
             setNewRole("");
           }}
         >
           + module
         </button>
-        <span className="hint">
-          edit opens this module&apos;s inspector · link offers valid couplings
-          · drag handles to connect · double-click a node to inspect
+        <span className={roleProblem ? "hint role-error" : "hint"}>
+          {roleProblem
+            ? `${proposedRole}: ${roleProblem} — pick a role name like '${suggest[newType] ?? newType}'`
+            : "edit opens this module's inspector · link offers valid couplings · drag handles to connect · double-click a node to inspect"}
         </span>
       </div>
 

@@ -190,8 +190,14 @@ export function ParEditor({
   // ---- diagram callbacks ------------------------------------------------
   const diagramOps = useMemo(
     () => ({
-      onAddModule: (role: string, type: string) =>
-        mutate((s) => (addModule(s, role, type), s)),
+      onAddModule: (role: string, type: string) => {
+        let err: string | null = null;
+        mutate((s) => {
+          err = addModule(s, role, type);
+          return s;
+        });
+        return err;
+      },
       onRemoveModule: (role: string) => {
         setInspectRole((r) => (r === role ? null : r));
         mutate((s) => (removeModule(s, role), s));

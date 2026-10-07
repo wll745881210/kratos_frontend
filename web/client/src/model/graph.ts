@@ -308,13 +308,36 @@ export function specToGraph(spec: Spec): Graph {
 // Graph mutations (operate in place on an already-cloned Spec)
 // ---------------------------------------------------------------------------
 
-export function addModule(s: Spec, role: string, type: string): void {
-  role = role.trim();
-  if (!role || role === CPL || role.includes(".")) return;
-  if (RESERVED_ROLES.includes(role)) return; // container hard error
-  const name = moduleSection(role);
-  if (name in s.sections) return;
+export function addModule(
+  s: Spec,
+  role: string,
+  type: string,
+): string | null {
+  const r = role.trim();
+  if (!r) return "empty role name";
+  if (r.includes(".")) return "role names cannot contain '.'";
+  if (RESERVED_ROLES.includes(r))
+    return `'${r}' is a reserved section name (collides with a native section)`;
+  const name = moduleSection(r);
+  if (name in s.sections) return `module '${r}' already exists`;
   s.sections[name] = { type };
+  return null;
+}
+
+// Why a proposed module role would be rejected, or null when valid.
+// Mirrors addModule's guards (the container's hard errors) so the
+// toolbar can disable the button and explain BEFORE the click.
+export function moduleRoleProblem(
+  role: string,
+  existing: string[],
+): string | null {
+  const r = role.trim();
+  if (!r) return null;
+  if (r.includes(".")) return "role names cannot contain '.'";
+  if (RESERVED_ROLES.includes(r))
+    return `'${r}' is a reserved section name`;
+  if (existing.includes(r)) return `module '${r}' already exists`;
+  return null;
 }
 
 export function removeModule(s: Spec, role: string): void {

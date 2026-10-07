@@ -23,7 +23,10 @@ function makeOps(): DiagramOps & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
-    onAddModule: (r, t) => calls.push(`addModule:${r}:${t}`),
+    onAddModule: (r, t) => {
+      calls.push(`addModule:${r}:${t}`);
+      return null;
+    },
     onRemoveModule: (r) => calls.push(`removeModule:${r}`),
     onAddCoupling: (f, k, t) => calls.push(`addCoupling:${f}:${k}:${t}`),
     onRemoveCoupling: (f, k, t) =>
@@ -56,7 +59,7 @@ describe("DiagramView", () => {
   it("add module via toolbar", () => {
     const ops = makeOps();
     render(<DiagramView spec={SPEC} ops={ops} />);
-    fireEvent.change(screen.getByPlaceholderText("new module role"), {
+    fireEvent.change(screen.getByPlaceholderText(/^e\.g\. |new module role/), {
       target: { value: "mg" },
     });
     fireEvent.click(screen.getByText("+ module"));
@@ -66,10 +69,30 @@ describe("DiagramView", () => {
   it("disallows duplicate roles", () => {
     const ops = makeOps();
     render(<DiagramView spec={SPEC} ops={ops} />);
-    fireEvent.change(screen.getByPlaceholderText("new module role"), {
+    fireEvent.change(screen.getByPlaceholderText(/^e\.g\. |new module role/), {
       target: { value: "flow" },
     });
     expect(screen.getByText("+ module")).toBeDisabled();
+  });
+
+  it("reserved role is disabled with an explanation (post insertion)", () => {
+    const ops = makeOps();
+    render(<DiagramView spec={SPEC} ops={ops} />);
+    const input = screen.getByPlaceholderText(/^e\.g\. |new module role/);
+    // select the post type, type the natural-but-reserved role 'post'
+    fireEvent.change(screen.getAllByRole("combobox")[0], {
+      target: { value: "post" },
+    });
+    fireEvent.change(input, { target: { value: "post" } });
+    const btn = screen.getByText("+ module");
+    expect(btn).toBeDisabled();
+    expect(screen.getByText(/reserved section name/)).toBeInTheDocument();
+    expect(ops.calls).toEqual([]);
+    // a valid role clears the error and re-enables the button
+    fireEvent.change(input, { target: { value: "subgrid" } });
+    expect(btn).toBeEnabled();
+    fireEvent.click(btn);
+    expect(ops.calls).toEqual(["addModule:subgrid:post"]);
   });
 
   it("double-click a module node opens its inspector", () => {

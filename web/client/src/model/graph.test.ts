@@ -8,6 +8,7 @@ import {
   icRegions,
   isRoleSection,
   missingRoleSections,
+  moduleRoleProblem,
   nativeMatches,
   removeCoupling,
   removeIcRegion,
@@ -85,12 +86,15 @@ describe("specToGraph", () => {
 describe("mutations", () => {
   it("addModule refuses bad roles and duplicates", () => {
     const s = spec({});
-    addModule(s, "flow", "hydro");
+    expect(addModule(s, "flow", "hydro")).toBeNull();
     expect(s.sections["module.flow"]).toEqual({ type: "hydro" });
-    addModule(s, "flow", "mhd"); // duplicate: no-op
+    // duplicate: no-op + error
+    expect(addModule(s, "flow", "mhd")).toMatch(/already exists/);
     expect(s.sections["module.flow"]).toEqual({ type: "hydro" });
-    addModule(s, "bad.role", "hydro");
+    expect(addModule(s, "bad.role", "hydro")).toMatch(/cannot contain/);
     expect(Object.keys(s.sections)).toEqual(["module.flow"]);
+    // empty
+    expect(addModule(s, "  ", "hydro")).toMatch(/empty/);
   });
 
   it("setModuleProp sets and clears type/order", () => {
@@ -232,10 +236,19 @@ describe("role sections", () => {
 
   it("addModule rejects reserved roles", () => {
     const s = structuredClone(SCOPED);
-    addModule(s, "post", "post");
+    expect(addModule(s, "post", "post")).toMatch(/reserved section name/);
     expect(s.sections["module.post"]).toBeUndefined();
-    addModule(s, "subgrid", "post");
+    expect(addModule(s, "subgrid", "post")).toBeNull();
     expect(s.sections["module.subgrid"]).toEqual({ type: "post" });
+  });
+
+  it("moduleRoleProblem mirrors addModule guards for the toolbar", () => {
+    expect(moduleRoleProblem("post", [])).toMatch(/reserved/);
+    expect(moduleRoleProblem("cooling", [])).toMatch(/reserved/);
+    expect(moduleRoleProblem("a.b", [])).toMatch(/cannot contain/);
+    expect(moduleRoleProblem("flow", ["flow"])).toMatch(/already exists/);
+    expect(moduleRoleProblem("subgrid", ["flow"])).toBeNull();
+    expect(moduleRoleProblem("", ["flow"])).toBeNull(); // caller disables
   });
 
   it("nativeMatches patterns", () => {
