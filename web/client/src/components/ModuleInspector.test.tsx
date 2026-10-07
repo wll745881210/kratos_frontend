@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Issue, SectionDescriptor, Spec } from "../model/types";
-import { ModuleInspector } from "./ModuleInspector";
+import { CoreInspector, ModuleInspector } from "./ModuleInspector";
 
 const DESCS: SectionDescriptor[] = [
   {
@@ -97,5 +97,58 @@ describe("ModuleInspector", () => {
     // species channel value is rendered (0.9) and a raw key adder exists
     expect(screen.getByDisplayValue("0.9")).toBeInTheDocument();
     expect(screen.getAllByPlaceholderText("+ new key").length).toBeGreaterThan(0);
+  });
+});
+
+describe("CoreInspector", () => {
+  const CORE_DESCS: SectionDescriptor[] = [
+    {
+      section: "unit",
+      title: "Unit system",
+      order: 20,
+      doc: "",
+      wildcard: false,
+      keys: [
+        { name: "length", type: "float", required: false, default: 1, doc: "" },
+        { name: "time", type: "float", required: false, default: 1, doc: "" },
+      ],
+    },
+  ];
+
+  it("edits an existing global section in place", () => {
+    const mutate = vi.fn();
+    const spec: Spec = {
+      version: 1, meta: {},
+      sections: { unit: { length: 2, time: 3.1557e13 } },
+    };
+    render(
+      <CoreInspector
+        spec={spec} descs={CORE_DESCS} issues={[]}
+        section="unit" mutate={mutate} onClose={() => {}}
+      />,
+    );
+    expect(screen.getAllByText("[unit]").length).toBeGreaterThan(0);
+    expect(screen.getByText("global section")).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("2"), {
+      target: { value: "4" },
+    });
+    expect(mutate).toHaveBeenCalled();
+  });
+
+  it("offers creation for an unset section, with identity unit", () => {
+    const mutate = vi.fn();
+    render(
+      <CoreInspector
+        spec={{ version: 1, meta: {}, sections: {} } as Spec}
+        descs={CORE_DESCS} issues={[]}
+        section="unit" mutate={mutate} onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByText("create [unit]"));
+    expect(mutate).toHaveBeenCalledWith(expect.any(Function));
+    // template carries the identity unit
+    const s = { sections: {} } as Spec;
+    (mutate.mock.calls[0][0] as (s: Spec) => Spec)(s);
+    expect(s.sections["unit"]).toEqual({ length: 1, time: 1, density: 1 });
   });
 });

@@ -3,18 +3,24 @@ import { api, ApiError } from "../api/client";
 import { FileBrowser } from "../components/FileBrowser";
 import { ProjectDialog } from "../components/ProjectDialog";
 import { IssuesPanel } from "../components/IssuesPanel";
-import { ModuleInspector } from "../components/ModuleInspector";
+import { CoreInspector, ModuleInspector } from "../components/ModuleInspector";
 import { SectionCard } from "../components/SectionCard";
 import { TextEditor } from "../components/TextEditor";
 import {
   addCoupling,
   addModule,
+  addOrderEdge,
+  chainModule,
   declaredRoles,
+  type EdgeEnds,
   isCouplingSection,
   isModuleSection,
   isRoleSection,
+  orderAfter,
   removeCoupling,
   removeModule,
+  removeOrderEdge,
+  setEdgeEnds,
 } from "../model/graph";
 import type {
   Blocklib,
@@ -79,6 +85,7 @@ export function ParEditor({
   const [newSection, setNewSection] = useState("");
   const [blocklib, setBlocklib] = useState<Blocklib | null>(null);
   const [inspectRole, setInspectRole] = useState<string | null>(null);
+  const [inspectCore, setInspectCore] = useState<string | null>(null);
   const saveAs = useRef<HTMLInputElement>(null);
 
   // ---- module block library (server-authoritative; static fallback) ----
@@ -202,11 +209,35 @@ export function ParEditor({
         setInspectRole((r) => (r === role ? null : r));
         mutate((s) => (removeModule(s, role), s));
       },
-      onAddCoupling: (fromRole: string, key: string, toRole: string) =>
-        mutate((s) => (addCoupling(s, fromRole, key, toRole), s)),
+      onAddCoupling: (
+        fromRole: string,
+        key: string,
+        toRole: string,
+        ends?: EdgeEnds,
+      ) =>
+        mutate((s) => {
+          addCoupling(s, fromRole, key, toRole);
+          if (ends) setEdgeEnds(s, fromRole, key, toRole, ends);
+          return s;
+        }),
       onRemoveCoupling: (fromRole: string, key: string, toRole?: string) =>
         mutate((s) => (removeCoupling(s, fromRole, key, toRole), s)),
+      onOrderAfter: (role: string, afterRole: string) =>
+        mutate((s) => {
+          orderAfter(s, role, afterRole);
+          addOrderEdge(s, role, afterRole);
+          return s;
+        }),
+      onRemoveOrderEdge: (fromRole: string, toRole: string) =>
+        mutate((s) => (removeOrderEdge(s, fromRole, toRole), s)),
+      onChainModule: (
+        chemRole: string,
+        hostRole: string,
+        afterRole: string,
+      ) =>
+        mutate((s) => (chainModule(s, chemRole, hostRole, afterRole), s)),
       onInspectRole: (role: string | null) => setInspectRole(role),
+      onInspectCore: (section: string | null) => setInspectCore(section),
     }),
     [],
   );
@@ -410,6 +441,16 @@ export function ParEditor({
                 role={inspectRole}
                 mutate={mutate}
                 onClose={() => setInspectRole(null)}
+              />
+            )}
+            {inspectCore !== null && spec && (
+              <CoreInspector
+                spec={spec}
+                descs={descs}
+                issues={issues}
+                section={inspectCore}
+                mutate={mutate}
+                onClose={() => setInspectCore(null)}
               />
             )}
             <IssuesPanel issues={issues} />

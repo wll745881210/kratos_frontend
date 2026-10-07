@@ -200,3 +200,82 @@ export function ModuleInspector({
     </div>
   );
 }
+
+interface CoreProps {
+  spec: Spec;
+  descs: SectionDescriptor[];
+  issues: Issue[];
+  section: string;
+  mutate: (fn: (s: Spec) => Spec) => void;
+  onClose: () => void;
+}
+
+/**
+ * CoreInspector — in-diagram editor for one GLOBAL section
+ * ([device] / [unit] / [mesh] / [boundary] / [cycle]).
+ *
+ * Double-clicking a dashed global box opens this panel. The section is
+ * edited in place (plain name, no role scoping). If the section is
+ * absent from the spec ("unset" box), the panel offers to create it —
+ * [unit] comes up with the identity unit (= code units).
+ */
+
+// Creation template for "unset" boxes (mirrors the server-side
+// GLOBAL_SECTION_DEFAULTS in core/kratos_spec/spec.py).
+export const GLOBAL_SECTION_TEMPLATE: Record<string, Record<string, number>> =
+  { unit: { length: 1, time: 1, density: 1 } };
+
+export function CoreInspector({
+  spec, descs, issues, section, mutate, onClose,
+}: CoreProps) {
+  const exists = section in spec.sections;
+  const desc = matchDesc(descs, section);
+  const issueFor = (name: string) =>
+    issues.filter((i) => i.where === name || i.where.startsWith(name + "."));
+
+  return (
+    <div className="module-inspector">
+      <div className="inspector-head">
+        <b>{`[${section}]`}</b>
+        <span className="hint">global section</span>
+        <button className="field-del" onClick={onClose}>×</button>
+      </div>
+      {!exists ? (
+        <div className="add-key">
+          <span className="hint">
+            this section is not in the project yet
+          </span>
+          <button
+            onClick={() =>
+              mutate((s) => (
+                (s.sections[section] = {
+                  ...GLOBAL_SECTION_TEMPLATE[section],
+                }),
+                s
+              ))
+            }
+          >
+            create [{section}]
+          </button>
+        </div>
+      ) : (
+        <SectionCard
+          key={section}
+          name={section}
+          desc={desc}
+          values={spec.sections[section] ?? {}}
+          issues={issueFor(section)}
+          onSet={(k, v) =>
+            mutate((s) => ((s.sections[section][k] = v), s))
+          }
+          onRemoveKey={(k) =>
+            mutate((s) => (delete s.sections[section][k], s))
+          }
+          onRemoveSection={() =>
+            mutate((s) => (delete s.sections[section], s))
+          }
+        />
+      )}
+    </div>
+  );
+}

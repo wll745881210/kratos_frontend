@@ -184,6 +184,7 @@ def create_app(allowed_roots: list[str] | None = None) -> FastAPI:
 
         modules: type + native sections + parameter docs;
         couplings: module type -> slot docs (dialog semantics);
+        slot_targets: module type -> slot -> allowed target module types;
         reserved_roles: role names the container rejects;
         ic_channels: [R.ic.<region>] channel keys incl x.<species>.
         """
@@ -192,6 +193,7 @@ def create_app(allowed_roots: list[str] | None = None) -> FastAPI:
         return {
             "modules": bindings._module_blocks(reg),
             "couplings": bindings._COUPLINGS,
+            "slot_targets": bindings._SLOT_TARGETS,
             "reserved_roles": bindings._RESERVED_ROLES,
             "ic_channels": bindings._IC_CHANNELS,
         }

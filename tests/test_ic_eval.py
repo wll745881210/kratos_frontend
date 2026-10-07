@@ -319,15 +319,13 @@ vel0_cgs = 1.0e8
 
 
 def test_cgs_missing_unit_is_error_issue():
-    text = """
-[mesh]
-x_min = 0 0 0
-x_max = 1 1 1
-n_cell_global = 16 2 1
-[init]
-rho0_cgs = 1.0e-24
-"""
-    out = ic_eval.eval_ic_slice(_spec_from_text(text), axis=2, max_dim=64)
+    # Spec constructed directly (NOT via from_par, which now forces a
+    # [unit] section): specs sent by the GUI go through from_dict, so
+    # the missing-unit guard stays live on that path.
+    spec = Spec(
+        version=1, meta={},
+        sections={"init": {"rho0_cgs": 1.0e-24}})
+    out = ic_eval.eval_ic_slice(spec, axis=2, max_dim=64)
     errs = [i for i in out["issues"] if i["level"] == "error"]
     assert any("require a [unit] section" in i["message"] for i in errs)
 

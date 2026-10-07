@@ -297,6 +297,17 @@ def _check_cgs(spec) -> list[Issue]:
                 f"univ: _cgs keys require a [unit] section "
                 f"(found {', '.join(sorted(cgs_keys))} in "
                 f"[{secname}])"))
+        else:
+            # identity unit: every _cgs divisor is 1 (b divides by
+            # sqrt(4*pi)) -> the "CGS" values land in code units
+            # unchanged.  Almost always a forgotten [unit].
+            l0, t0, rho0 = _unit_numbers(spec) or (None, None, None)
+            if l0 == 1 and t0 == 1 and rho0 == 1:
+                issues.append(Issue(
+                    "warning", where,
+                    f"[{secname}] uses _cgs keys while [unit] is the "
+                    f"identity (length=time=density=1): values are "
+                    f"divided by 1 -- set real units in [unit]"))
         for k in cgs_keys:
             base = k[:-4]
             if base in sec:
@@ -411,7 +422,8 @@ def cross_validate(spec) -> list[Issue]:
     """Cross-field checks; appended to Spec.validate()."""
     return (_check_mesh(spec) + _check_unit(spec)
             + _check_refine(spec) + _check_roles(spec)
-            + _check_post(spec) + _check_cgs(spec))
+            + _check_post(spec) + _check_cgs(spec)
+            + _check_chem_chain(spec) + _check_chem_modules(spec))
 
 
 # ---------------------------------------------------------------------------
@@ -433,6 +445,12 @@ def _coupling_slots() -> dict[str, dict]:
     """module type -> valid coupling slots (bindings._COUPLINGS)."""
     from .bindings import _COUPLINGS
     return _COUPLINGS
+
+
+def _slot_targets() -> dict[str, dict[str, list[str]]]:
+    """(declarer type, slot) -> allowed target types (bindings)."""
+    from .bindings import _SLOT_TARGETS
+    return _SLOT_TARGETS
 
 
 def _reserved_roles() -> list[str]:
@@ -511,6 +529,8 @@ def _check_roles(spec) -> list[Issue]:
 
     # coupling sections: role must be declared, keys must be valid
     # slots for that role's type, values must reference declared roles
+    # whose type satisfies the slot's target constraint (C++ mirrors)
+    slot_targets = _slot_targets()
     for name in sorted(sections):
         if name == "coupling" or not name.startswith("coupling."):
             continue
@@ -532,10 +552,39 @@ def _check_roles(spec) -> list[Issue]:
             targets = (val if isinstance(val, list)
                        else [val] if isinstance(val, str) else [])
             for tgt in targets:
-                if isinstance(tgt, str) and tgt not in declared:
+                if not isinstance(tgt, str):
+                    continue
+                if tgt not in declared:
                     issues.append(Issue(
                         "warning", name,
                         f"coupling target '{tgt}' is not a declared role"))
+                    continue
+                tt = declared[tgt]
+                allowed = slot_targets.get(t, {}).get(key)
+                if allowed is None or tt == "":
+                    continue
+                if tt not in allowed:
+                    if key == "parasite" and t == "chemistry":
+                        # registry.h hard error (exact C++ text)
+                        issues.append(Issue(
+                            "error", name,
+                            f"univ: [coupling.{role}] parasite target "
+                            f"'{tgt}' (type {tt}) has no multi-species "
+                            "handling -- chemistry must parasite onto "
+                            "chem_hydro or chem_mhd"))
+                    elif t == "post":
+                        # post_t::init hard error (exact C++ text)
+                        issues.append(Issue(
+                            "error", name,
+                            f"univ::post_t: coupling slot 'dyn' missing or "
+                            f"not a dynamics module (target '{tgt}' is "
+                            f"type {tt})"))
+                    else:
+                        issues.append(Issue(
+                            "error", name,
+                            f"coupling slot '{key}' of module type "
+                            f"'{t}' does not accept target type "
+                            f"'{tt}' (allowed: {', '.join(allowed)})"))
 
     return issues
 
@@ -651,4 +700,133 @@ def _check_post(spec) -> list[Issue]:
                 "initial velocity perturbation, e.g. an [ic.*] region "
                 "vel_x = 0.01*(2*rand(i,j,k,42)-1), or [init] "
                 "vel0 != 0"))
+    return issues
+
+
+def _check_chem_chain(spec) -> list[Issue]:
+    """Chemistry reads the shared field state at its own order: warn
+    when it runs before another module of its host's family (post etc.)
+    -- it would read that module's PRE-processed data."""
+    issues: list[Issue] = []
+    sections = getattr(spec, "sections", {})
+    if not isinstance(sections, dict):
+        return issues
+    declared = _declared_modules(sections)
+    chems = {r for r, t in declared.items() if t == "chemistry"}
+    if not chems:
+        return issues
+    order = _module_orders(sections, declared)
+
+    def _targets_of(val) -> list:
+        out: list[str] = []
+        for v in (val if isinstance(val, list) else [val]):
+            out.extend(str(v).split())
+        return out
+
+    for name in sorted(sections):
+        if name == "coupling" or not name.startswith("coupling."):
+            continue
+        role = name[9:]
+        if role not in chems:
+            continue
+        host = str(sections[name].get("parasite", "")).strip()
+        if not host or host not in order:
+            continue  # undeclared target: warned elsewhere
+        # family: the host itself + other modules coupled to it
+        family = [host]
+        for other in sorted(sections):
+            if other == "coupling" or not other.startswith("coupling."):
+                continue
+            ofrom = other[9:]
+            if ofrom == role or ofrom not in order:
+                continue
+            if any(host in _targets_of(v) for v in sections[other].values()):
+                family.append(ofrom)
+        for m in family:
+            if order[m] >= order[role]:
+                issues.append(Issue(
+                    "warning", f"module.{role}",
+                    f"module '{role}' (chemistry) runs at order "
+                    f"{order[role]}, before '{m}' (order {order[m]}) "
+                    f"which processes the same fields via host "
+                    f"'{host}' -- chemistry would read pre-'{m}' data; "
+                    f"give '{role}' a larger 'order'"))
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Chemistry module contract (mirrors trunk hard errors, verified on the
+# ttt.par marginal case):
+#   - chem_hydro/chem_mhd need a chemistry parasite -- they take their
+#     species list and EOS from it (chem_hydro::read throws
+#     'q_che unbound: hydro' otherwise)
+#   - chemistry needs >= 1 species -- the corrector's stoichiometry
+#     matrix is built from the species list and its SVD throws
+#     'svd.h' on an empty one (svd.cpp:29, m == 0)
+# ---------------------------------------------------------------------------
+
+def _species_count(sections, role: str) -> int:
+    """[R.chemistry] species (scoped), else the global [chemistry]."""
+    names = [f"{role}.chemistry"] if role else []
+    names.append("chemistry")
+    for name in names:
+        sec = sections.get(name)
+        if not isinstance(sec, dict) or "species" not in sec:
+            continue
+        v = sec["species"]
+        if isinstance(v, list):
+            return len([s for s in v if str(s).strip()])
+        if isinstance(v, str):
+            return len(v.split())
+        return 0 if v is None else 1
+    return 0
+
+
+def _parasite_targets(sections, declared: dict) -> set:
+    """Roles that have a chemistry module attached via
+    [coupling.<chem>] parasite = <host>."""
+    hosts: set = set()
+    for name in sections:
+        if name == "coupling" or not name.startswith("coupling."):
+            continue
+        if declared.get(name[9:]) != "chemistry":
+            continue
+        val = sections[name].get("parasite")
+        for tgt in (val if isinstance(val, list) else [val]):
+            if isinstance(tgt, str):
+                hosts.update(tgt.split())
+    return hosts
+
+
+def _check_chem_modules(spec) -> list[Issue]:
+    issues: list[Issue] = []
+    sections = getattr(spec, "sections", {})
+    if not isinstance(sections, dict):
+        return issues
+    declared = _declared_modules(sections)
+    parasited = _parasite_targets(sections, declared)
+
+    for role, t in sorted(declared.items()):
+        if t in ("chem_hydro", "chem_mhd") and role not in parasited:
+            issues.append(Issue(
+                "error", f"module.{role}" if role else "module",
+                f"module '{role}' (type {t}) has no chemistry "
+                "parasite: chem_hydro/chem_mhd take their species "
+                "list and EOS from a chemistry module -- declare one "
+                "(e.g. [module.chem] type = chemistry) and couple it "
+                f"(e.g. [coupling.chem] parasite = {role}); kratos "
+                "throws 'q_che unbound: hydro' at startup otherwise"))
+
+    for role, t in sorted(declared.items()):
+        if t != "chemistry":
+            continue
+        if _species_count(sections, role) == 0:
+            where = f"{role}.chemistry" if role else "chemistry"
+            issues.append(Issue(
+                "error", where,
+                f"chemistry module '{role}' has no species: "
+                f"[{where}] species = H2 H ... needs at least one "
+                "entry -- the stoichiometry matrix is built from "
+                "the species list and its SVD throws 'svd.h' on an "
+                "empty one"))
     return issues

@@ -82,6 +82,15 @@ _COUPLINGS: Dict[str, Dict[str, str]] = {
     },
 }
 
+# Allowed target module types per (declarer type, slot), mirroring the
+# C++ hard errors: registry.h rejects a chemistry parasite onto anything
+# but the multi-species dynamics flavors (q_che binding), and post_t::init
+# throws when the dyn slot does not point at a dynamics module.
+_SLOT_TARGETS: Dict[str, Dict[str, List[str]]] = {
+    "chemistry": {"parasite": ["chem_hydro", "chem_mhd"]},
+    "post": {"dyn": ["hydro", "mhd", "chem_hydro", "chem_mhd"]},
+}
+
 # Role names rejected by the container (registry.h reserved set):
 # they collide with native section names once [R.<sec>] is remapped.
 _RESERVED_ROLES: List[str] = [
@@ -132,6 +141,7 @@ def emit_blocklib(reg, dest: Path) -> Path:
         "grammar": grammar,
         "modules": _module_blocks(reg),
         "couplings": _COUPLINGS,
+        "slot_targets": _SLOT_TARGETS,
         "reserved_roles": _RESERVED_ROLES,
         "ic_channels": _IC_CHANNELS,
         "ic_recipes": recipes_doc["recipes"],

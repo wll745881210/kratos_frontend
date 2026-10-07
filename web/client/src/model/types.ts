@@ -47,6 +47,8 @@ export interface Blocklib {
   modules: BlocklibModule[];
   couplings: Record<string, Record<string, string>>; // type -> slot -> doc
   reserved_roles: string[];
+  /** type -> slot -> allowed target module types (C++ mirror). */
+  slot_targets?: Record<string, Record<string, string[]>>;
 }
 
 /** IC slice preview result (server ic_eval). */

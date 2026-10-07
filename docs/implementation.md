@@ -612,3 +612,91 @@ C++ pgen 内（前端核验 FP32 边缘）；表达式坐标保持 code units；
   = edot·M·T 精确）。
 - 文档：`universal_pgen_reference.md` §7.1–7.3（换算表/规则/FP32 守
   卫）、`user_guide_turb_box.md` §8（CGS 变体 + 参考数字）。
+
+## 2026-10-07 图内全局框 + 连线语义 + chemistry 寄生校验
+
+- **全局框（Diagram）**：五个全局节（device/unit/mesh/boundary/cycle）
+  恒渲染（缺失 → "unset"），间距收紧；双击可检视（CoreInspector，
+  缺失节可一键创建 `[unit]`）；`Spec.from_par` 强制 `[unit]`（恒等默认）
+  与 `[device]` 存在（setdefault，不覆写；往返幂等）。
+- **连线交互修复**（用户报告的两个 bug）：
+  1. 水平（左/右）拖拽不再产生寄生耦合——耦合对话框在流模式下过滤
+     `parasite` 槽，垂直（上/下）拖拽才是寄生语义；上下接点改为
+     source+target 重叠对，任意垂直拖拽组合均可完成连线（此前
+     top→top/bot→bot 被 React Flow 静默拒绝）。
+  2. 槽位按钮增加**目标类型门**（SLOT_TARGET_TYPES）：`post.dyn` 要求
+     动力学模块（hydro/mhd/chem_hydro/chem_mhd），`chemistry.parasite`
+     要求多组分动力学（chem_hydro/chem_mhd）——不满足时按钮禁用并
+     显示原因。bindings 新增 `slot_targets` 进 blocklib。
+- **C++ 硬校验**（registry.h）：`[coupling.<chem>] parasite` 指向
+  非 chem_hydro/chem_mhd 模块 → throw（文本与前端镜像）。负例
+  （chem→hydro、chem→post）实测 throw；chem_sod 回归通过。
+- **xchecks 镜像**：chem 寄生错目标 / post.dyn 非动力学 → error
+  （逐字 C++ 文本）；前端校验门 266 pytest / 64 vitest 全绿。
+- 待办：chem_mhd 尚未注册进 universal pgen（trunk 已有，暂缓）。
+
+## 2026-10-07 chemistry 执行链语义（post → chemistry）
+
+- **修正认知**（用户指出）：chemistry 并非"与 post 无数据流"——它按
+  自身 `order` 读取共享场，完整接受 post（能量等变量）处理后的数据。
+  此前对话框文案错误，已改。
+- **链式接线**：post↔chemistry 配对无直接耦合槽，对话框现在给出
+  "chem after sg (host flow)" 一键接线：`chainModule()` 写
+  `[coupling.<chem>] parasite = <host>`（经对方耦合顺藤摸到宿主）
+  并取宿主族中大于对方 order 的最小空闲显式 order（显式 order 唯一，
+  容器对重复值 throw）。
+- **图合成边**：`specToGraph` 为 chemistry 合成水平执行链实线
+  `chain:<chem>:<latest>`（latest = 宿主族中 order 小于 chemistry 的
+  最新处理模块；宿主本身由垂直寄生边表达）。合成边不可删除（派生量）。
+- **xcheck**：`_check_chem_chain`——chemistry 的 order 早于宿主族任一
+  处理模块（含宿主本身）→ warning "would read pre-'<m>' data"。
+- 测试：pytest 269 / vitest 69 / tsc / build 全绿。
+
+## 2026-10-07 寄生边接线点跟随拖曳
+
+- **需求**（用户）：寄生线（上下接点）应接到用户实际拖曳的点位；
+  自动生成的边默认双双接**下方**点位，避免交叉遮挡。
+- 实现：`GEdge.srcEnd/tgtEnd`（host 侧 / 寄生方侧的 top|bot），来源
+  `spec.meta.edge_ends`（与 diagram_positions 同级的项目级持久化）；
+  `onConnect` 记录拖曳两端实际 handle 位置（仅位置语义 top/bot，
+  出入方向由渲染方向决定），经 `commitCouple → setEdgeEnds` 写入；
+  `flowEdges` 寄生边 `sourceHandle = <srcEnd>-out`、
+  `targetHandle = <tgtEnd>-in`，缺省 bot/bot。
+- 清理：`removeCoupling` 删除该声明方寄生边记录；`removeModule`
+  删除涉及该 role（任一端）的记录。
+- 测试：vitest 71（+2：默认 bot-bot、drawn top/bot 跟随、meta 持久
+  化与清理）；pytest 269 不变。
+
+## 2026-10-07 水平连线放宽为依赖语义（order 接线）
+
+- **修正**（用户）：水平连线不应强求"槽位数据传输"——同一容器内所有
+  模块共享同一 proxy 场，order 本就是容器唯一的全序机制；校验数据
+  传输总有漏洞，依赖（执行先后）才是完备表达。类型门保留，仅用于
+  镜像 C++ 启动 throw（防 GUI 生成跑不起来的 par），不再阻止连线。
+- **次序接线**：任意两模块的水平配对恒提供 "X after Y" 按钮
+  （`orderAfter`：取大于对方有效 order 的最小空闲显式 order）；
+  drawn 边持久化 `spec.meta.order_edges`（项目元数据，par 层真值仍
+  是 order 值），渲染为实线 "after"。删边 = 删记录（不动 order）。
+- **去重**：显式 order 边覆盖同对的 chemistry 链合成边（避免双线）；
+  删除显式边后合成边回归。
+- 测试：vitest 75（+4）；pytest 269。
+
+## 2026-10-07 ttt.par 边际用例 → chemistry 双向依赖校验
+
+用户以 `~/scratch/tst_kratos_frontend/ttt.par`（chem_hydro + post +
+chemistry 零物种）做边际测试：前端 validate 全绿但 kratos 实跑 throw。
+实测定位两条 trunk 硬依赖（均为边际场景，C++ 无法改，前端 xcheck 镜像）：
+
+- **chem_hydro（及 chem_mhd）必须被 chemistry 寄生**：物种列表与 EOS
+  取自 chemistry 模块；裸 chem_hydro → `q_che unbound: hydro`
+  （chem_hydro::read）。变体实测：删除 chemistry 模块即 throw。
+- **chemistry 至少 1 个 species**：修正器由物种列表构造化学计量矩阵，
+  空列表 → `svd.h`（svd.cpp:29 `m == 0`，经 sto_t::init）。ttt.par 实跑
+  即撞此错。
+
+实现：xchecks.py 新增 `_check_chem_modules`（`_species_count` 处理
+[R.chemistry] species 作用域 + 全局 [chemistry] 回退，list/str 两种存储；
+`_parasite_targets` 收集 parasite 键目标），两条均为 error 并附修复
+指引。测试 +6（54/54）；全量 pytest 275。CLI 实测三变体与 kratos 行为
+一致：ttt.par → svd.h error；ttt_noc（无 chem 模块）→ q_che unbound
+error；纯 hydro → OK。文档：reference.md §2.2 增"依赖是双向的"条目。

@@ -85,6 +85,25 @@ dyn = flow             # 命名耦合槽：值 = 空白分隔的 role 列表
 
 - `parasite`：等价于 cmz 风格的 `q->parasite(p)`（chemistry 的 parasite
   是双向的，容器只调一次）。
+- **chemistry 的寄生目标受限**：标准 hydro/MHD 没有多组分处理，
+  `parasite` 的目标必须是 `chem_hydro`（或 `chem_mhd`，后者尚未在
+  universal pgen 注册）类型模块，否则装配时 throw：
+  `univ: [coupling.<role>] parasite target '<tgt>' (type <tt>) has no
+  multi-species handling -- chemistry must parasite onto chem_hydro or
+  chem_mhd`。同理 post 的 `dyn` 槽要求目标为动力学模块
+  （hydro/mhd/chem_hydro/chem_mhd）。
+- **依赖是双向的**（反向也强制）：`chem_hydro`（及 `chem_mhd`）的
+  物种列表与 EOS 取自 chemistry 模块——没有 chemistry 寄生时 trunk
+  throw `q_che unbound: hydro`；chemistry 自身至少需要 1 个 species
+  （修正器由物种列表构造化学计量矩阵，空列表 SVD throw `svd.h`）。
+  两者的前端 xcheck 均为 error（实测 ttt.par 边际用例）。
+- **chemistry 与执行链**：chemistry 按自身 `order` 读取共享场——
+  即完整接受此前所有模块（含 post 对能量等变量的处理）的结果。
+  图上 post→chemistry 的水平实线即该数据链（由 `parasite` 绑定 +
+  order 合成，非独立 par 键）；GUI 的链式接线（"chem after sg"）
+  会同时写 `[coupling.<chem>] parasite = <host>` 并把 order 排到
+  处理模块之后。若 chemistry 的 order 早于同宿主的处理模块，前端
+  xcheck 告警（"would read pre-'<m>' data"）。
 - 其他键 = 命名槽（由目标模块的 `couple_slots()` 定义，如 post 的 `dyn`）。
 - 未知 role / 未知槽 / 槽数超上限 → throw 并列出现有 role 与合法槽。
 - 装配时打印计划：`[univ] module[0] role='flow' type='hydro'` 等。

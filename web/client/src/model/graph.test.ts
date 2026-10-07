@@ -3,6 +3,8 @@ import {
   addCoupling,
   addIcRegion,
   addModule,
+  addOrderEdge,
+  chainModule,
   declaredRoles,
   Graph,
   icRegions,
@@ -10,12 +12,17 @@ import {
   missingRoleSections,
   moduleRoleProblem,
   nativeMatches,
+  orderAfter,
+  parasiteHostCandidates,
   removeCoupling,
   removeIcRegion,
   removeModule,
+  removeOrderEdge,
   rolePrefixOf,
   roleSections,
+  setEdgeEnds,
   setModuleProp,
+  slotTargetProblem,
   speciesChannelKeys,
   specToGraph,
   stripRole,
@@ -255,5 +262,193 @@ describe("role sections", () => {
     expect(nativeMatches("ic.left", "ic.*")).toBe(true);
     expect(nativeMatches("init", "init")).toBe(true);
     expect(nativeMatches("init", "ic.*")).toBe(false);
+  });
+
+  it("slotTargetProblem mirrors the container's target-type gates", () => {
+    // chemistry parasitizes only the multi-species dynamics flavors
+    expect(slotTargetProblem("chemistry", "parasite", "hydro")).toMatch(
+      /no multi-species handling/,
+    );
+    expect(slotTargetProblem("chemistry", "parasite", "mhd")).toMatch(
+      /no multi-species handling/,
+    );
+    expect(slotTargetProblem("chemistry", "parasite", "post")).toMatch(
+      /no multi-species handling/,
+    );
+    expect(slotTargetProblem("chemistry", "parasite", "chem_hydro")).toBeNull();
+    expect(slotTargetProblem("chemistry", "parasite", "chem_mhd")).toBeNull();
+    // post.dyn needs a dynamics module
+    expect(slotTargetProblem("post", "dyn", "chemistry")).toMatch(
+      /not a dynamics module/,
+    );
+    expect(slotTargetProblem("post", "dyn", "hydro")).toBeNull();
+    expect(slotTargetProblem("post", "dyn", "chem_hydro")).toBeNull();
+    // unknown combos / missing info are not judged
+    expect(slotTargetProblem("hydro", "anything", "post")).toBeNull();
+    expect(slotTargetProblem("post", "dyn", "")).toBeNull();
+  });
+
+  it("parasiteHostCandidates discovers hosts through the peer", () => {    const s = spec({
+      "module.flow": { type: "chem_hydro", order: 0 },
+      "module.sg": { type: "post", order: 1 },
+      "module.chem": { type: "chemistry", order: 2 },
+      "coupling.sg": { dyn: "flow" },
+    });
+    // dragging post -> chemistry: the host is found via post's own
+    // dyn coupling (the module that feeds it)
+    expect(parasiteHostCandidates(s, "chem", "sg")).toEqual(["flow"]);
+    // the peer itself when it is a multi-species dynamics module
+    expect(parasiteHostCandidates(s, "chem", "flow")).toEqual(["flow"]);
+    // any other enrolled chem_* module is a fallback candidate
+    const s2 = spec({
+      "module.a": { type: "hydro", order: 0 },
+      "module.b": { type: "chem_mhd", order: 1 },
+      "module.chem": { type: "chemistry", order: 2 },
+    });
+    expect(parasiteHostCandidates(s2, "chem", "a")).toEqual(["b"]);
+    // plain modules with no chem_* anywhere: no host to offer
+    const s3 = spec({
+      "module.flow": { type: "hydro", order: 0 },
+      "module.chem": { type: "chemistry", order: 1 },
+    });
+    expect(parasiteHostCandidates(s3, "chem", "flow")).toEqual([]);
+  });
+
+  it("synthesizes the chemistry chain edge from the latest processor", () => {
+    const s = spec({
+      "module.flow": { type: "chem_hydro", order: 0 },
+      "module.sg": { type: "post", order: 1 },
+      "module.chem": { type: "chemistry", order: 2 },
+      "coupling.sg": { dyn: "flow" },
+      "coupling.chem": { parasite: "flow" },
+    });
+    const g = specToGraph(s);
+    // execution chain: post processed the fields chemistry will read
+    const e = g.edges.find((x) => x.id === "chain:chem:sg");
+    expect(e).toBeDefined();
+    expect(e?.fromRole).toBe("chem"); // declarer = chemistry
+    expect(e?.toRole).toBe("sg"); // provider = post
+    expect(e?.parasite).toBe(false);
+  });
+
+  it("no chain edge without a parasite host or with an early order", () => {
+    // no parasite binding -> nothing to synthesize from
+    const noHost = spec({
+      "module.flow": { type: "chem_hydro", order: 0 },
+      "module.sg": { type: "post", order: 1 },
+      "module.chem": { type: "chemistry", order: 2 },
+      "coupling.sg": { dyn: "flow" },
+    });
+    expect(specToGraph(noHost).edges.find((x) => x.id.startsWith("chain:"))).toBeUndefined();
+    // chemistry BEFORE post: latest predecessor is the host itself ->
+    // the vertical parasite edge covers it, no horizontal chain edge
+    const early = spec({
+      "module.flow": { type: "chem_hydro", order: 0 },
+      "module.sg": { type: "post", order: 2 },
+      "module.chem": { type: "chemistry", order: 1 },
+      "coupling.sg": { dyn: "flow" },
+      "coupling.chem": { parasite: "flow" },
+    });
+    expect(specToGraph(early).edges.find((x) => x.id.startsWith("chain:"))).toBeUndefined();
+  });
+
+  it("chainModule parasites the host and orders past the peer", () => {
+    const s = spec({
+      "module.flow": { type: "chem_hydro", order: 0 },
+      "module.sg": { type: "post", order: 1 },
+      "module.chem": { type: "chemistry", order: 0 },
+      "coupling.sg": { dyn: "flow" },
+    });
+    chainModule(s, "chem", "flow", "sg");
+    expect(s.sections["coupling.chem"]).toEqual({ parasite: "flow" });
+    // smallest free explicit order past sg(1): 2
+    expect(s.sections["module.chem"].order).toBe(2);
+    // already past the peer -> order untouched
+    const s2 = structuredClone(s);
+    chainModule(s2, "chem", "flow", "sg");
+    expect(s2.sections["module.chem"].order).toBe(2);
+  });
+
+  it("edge ends persist, stamp the graph, and clean up on removal", () => {
+    const s = spec({
+      "module.flow": { type: "chem_hydro", order: 0 },
+      "module.chem": { type: "chemistry", order: 1 },
+      "coupling.chem": { parasite: "flow" },
+    });
+    // default: auto-generated parasite edges carry no ends
+    expect(specToGraph(s).edges[0].srcEnd).toBeUndefined();
+    // drawn from flow's top to chem's bottom -> remembered in meta
+    setEdgeEnds(s, "chem", "parasite", "flow", { src: "top", tgt: "bot" });
+    const e = specToGraph(s).edges[0];
+    expect(e.srcEnd).toBe("top");
+    expect(e.tgtEnd).toBe("bot");
+    // removing the coupling forgets the drawn positions
+    removeCoupling(s, "chem", "parasite");
+    const meta = s.meta as { edge_ends?: Record<string, unknown> };
+    expect(meta.edge_ends).toEqual({});
+    // removing a module forgets entries on either side of its edges
+    const s2 = spec({
+      "module.flow": { type: "chem_hydro", order: 0 },
+      "module.chem": { type: "chemistry", order: 1 },
+      "coupling.chem": { parasite: "flow" },
+    });
+    setEdgeEnds(s2, "chem", "parasite", "flow", { src: "bot", tgt: "top" });
+    removeModule(s2, "chem");
+    const meta2 = s2.meta as { edge_ends?: Record<string, unknown> };
+    expect(meta2.edge_ends).toEqual({});
+  });
+
+  it("orderAfter sequences any pair via the smallest free order", () => {
+    const s = spec({
+      "module.flow": { type: "chem_hydro", order: 0 },
+      "module.sg": { type: "post", order: 1 },
+      "module.chem": { type: "chemistry", order: 0 },
+    });
+    orderAfter(s, "chem", "sg");
+    // smallest free explicit order past sg(1)
+    expect(s.sections["module.chem"].order).toBe(2);
+    // already after: untouched
+    const s2 = structuredClone(s);
+    orderAfter(s2, "chem", "sg");
+    expect(s2.sections["module.chem"].order).toBe(2);
+    // same module: no-op
+    orderAfter(s2, "sg", "sg");
+    expect(s2.sections["module.sg"].order).toBe(1);
+  });
+
+  it("order edges persist in meta, render, dedup chain, clean up", () => {
+    const base = {
+      "module.flow": { type: "chem_hydro", order: 0 },
+      "module.sg": { type: "post", order: 1 },
+      "module.chem": { type: "chemistry", order: 2 },
+      "coupling.sg": { dyn: "flow" },
+      "coupling.chem": { parasite: "flow" },
+    };
+    // without drawn edges: the chemistry chain edge is synthesized
+    const g0 = specToGraph(spec(base));
+    expect(g0.edges.find((e) => e.id === "chain:chem:sg")).toBeDefined();
+    // an explicit order edge replaces the synthesis (no duplicate)
+    const s = spec(base);
+    addOrderEdge(s, "chem", "sg");
+    const g = specToGraph(s);
+    expect(g.edges.find((e) => e.id === "chain:chem:sg")).toBeUndefined();
+    const ord = g.edges.find((e) => e.id === "ord:chem:sg");
+    expect(ord).toMatchObject({ fromRole: "chem", toRole: "sg" });
+    // persisted in meta, idempotent
+    const meta = s.meta as { order_edges?: { from: string; to: string }[] };
+    expect(meta.order_edges).toEqual([{ from: "chem", to: "sg" }]);
+    // removal forgets the drawn edge; the derived chain synthesis
+    // takes over again (par-level truth is untouched)
+    removeOrderEdge(s, "chem", "sg");
+    expect(meta.order_edges).toEqual([]);
+    expect(
+      specToGraph(s).edges.find((e) => e.id === "chain:chem:sg"),
+    ).toBeDefined();
+    // removing a module drops its order edges (either end)
+    const s2 = spec(base);
+    addOrderEdge(s2, "chem", "sg");
+    removeModule(s2, "sg");
+    const meta2 = s2.meta as { order_edges?: { from: string; to: string }[] };
+    expect(meta2.order_edges).toEqual([]);
   });
 });

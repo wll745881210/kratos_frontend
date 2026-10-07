@@ -27,12 +27,16 @@ import {
   COUPLING_SLOTS,
   CORE_SECTIONS,
   couplingSection,
+  type EdgeEnds,
   type Graph,
   MODULE_LABELS,
   MODULE_TYPES,
   moduleNodeId,
   moduleRoleProblem,
   moduleType,
+  parasiteHostCandidates,
+  SLOT_TARGET_TYPES,
+  slotTargetProblem,
   specToGraph,
 } from "../model/graph";
 import type { Blocklib, Spec } from "../model/types";
@@ -41,10 +45,29 @@ export interface DiagramOps {
   /** returns an error message when the module was NOT added, else null */
   onAddModule: (role: string, type: string) => string | null;
   onRemoveModule: (role: string) => void;
-  onAddCoupling: (fromRole: string, key: string, toRole: string) => void;
+  onAddCoupling: (
+    fromRole: string,
+    key: string,
+    toRole: string,
+    ends?: EdgeEnds,
+  ) => void;
   onRemoveCoupling: (fromRole: string, key: string, toRole?: string) => void;
+  /** sequence `role` after `afterRole` (order values; any two modules
+   * on the shared mesh can be ordered) and keep the drawn edge */
+  onOrderAfter: (role: string, afterRole: string) => void;
+  /** forget a drawn execution-order edge (par truth stays) */
+  onRemoveOrderEdge: (fromRole: string, toRole: string) => void;
+  /** wire a chemistry module into the execution chain: parasite onto
+   * the host AND run after `afterRole` (reads its processed output) */
+  onChainModule: (
+    chemRole: string,
+    hostRole: string,
+    afterRole: string,
+  ) => void;
   /** open the in-diagram inspector for a module role */
   onInspectRole: (role: string | null) => void;
+  /** open the in-diagram inspector for a global section (mesh/unit/…) */
+  onInspectCore: (section: string | null) => void;
 }
 
 interface NodeData {
@@ -70,10 +93,15 @@ function KratosNode({ data }: NodeProps<NodeData>) {
       {!data.core && (
         <>
           {/* left/right handles: execution-order flow (provider right
-              -> consumer left); top/bottom: parasite attachments
-              (host bottom -> parasite top, dashed edge) */}
+              -> consumer left); top/bottom: parasite attachments.
+              Each VERTICAL position carries BOTH a source and a
+              target handle (overlapping) so ANY vertical drag
+              between two modules completes — the dialog, not the
+              handle geometry, decides which node is the parasite
+              declarer. */}
           <Handle type="target" position={Position.Left} id="in" />
-          <Handle type="target" position={Position.Top} id="top" />
+          <Handle type="target" position={Position.Top} id="top-in" />
+          <Handle type="source" position={Position.Top} id="top-out" />
         </>
       )}
       <div className="gnode-label">{data.label}</div>
@@ -115,7 +143,8 @@ function KratosNode({ data }: NodeProps<NodeData>) {
       {!data.core && (
         <>
           <Handle type="source" position={Position.Right} id="out" />
-          <Handle type="source" position={Position.Bottom} id="bot" />
+          <Handle type="target" position={Position.Bottom} id="bot-in" />
+          <Handle type="source" position={Position.Bottom} id="bot-out" />
         </>
       )}
     </div>
@@ -138,9 +167,12 @@ export function flowEdges(g: Graph): Edge[] {
       ? {
           id: e.id,
           source: e.toId, // host
-          sourceHandle: "bot",
+          // attachment points: the user's drag choice (GEdge.srcEnd /
+          // tgtEnd, persisted in spec.meta.edge_ends); auto-generated
+          // edges default to bottom-to-bottom to avoid crossings
+          sourceHandle: `${e.srcEnd ?? "bot"}-out`,
           target: e.fromId, // parasite (slot declarer)
-          targetHandle: "top",
+          targetHandle: `${e.tgtEnd ?? "bot"}-in`,
           label: "parasite",
           animated: true,
           className: "gedge parasite",
@@ -151,7 +183,7 @@ export function flowEdges(g: Graph): Edge[] {
           sourceHandle: "out",
           target: e.fromId, // slot declarer (downstream)
           targetHandle: "in",
-          label: e.key,
+          label: e.key === "chain" ? "output" : e.key === "ord" ? "after" : e.key,
           animated: false,
           className: "gedge",
         },
@@ -161,9 +193,14 @@ export function flowEdges(g: Graph): Edge[] {
 // Columnar auto-layout: core sections left, modules right (by order, then
 // role). Dragging is free-form and persisted to spec.meta (M2.4).
 function layout(g: Graph): { nodes: Node<NodeData>[]; edges: Edge[] } {
-  const cores = CORE_SECTIONS.filter((c) =>
-    g.nodes.some((n) => n.kind === "core" && n.role === c),
+  // Global-parameter boxes are ALWAYS drawn (dashed, left column) —
+  // [unit] shows even in code-unit pars so the affordance is uniform;
+  // absent sections get an "unset" sub-label. mesh/boundary/cycle exist
+  // in every runnable par; unit/device are optional.
+  const present = new Set(
+    g.nodes.filter((n) => n.kind === "core").map((n) => n.role),
   );
+  const cores = CORE_SECTIONS;
   const mods = g.nodes
     .filter((n) => n.kind === "module")
     .sort(
@@ -175,9 +212,13 @@ function layout(g: Graph): { nodes: Node<NodeData>[]; edges: Edge[] } {
     nodes.push({
       id: `core:${c}`,
       type: "kratos",
-      position: { x: 0, y: i * 90 },
+      position: { x: 0, y: i * 70 },
       deletable: false,
-      data: { label: `[${c}]`, core: true },
+      data: {
+        label: `[${c}]`,
+        core: true,
+        sub: present.has(c) ? undefined : "unset",
+      },
     }),
   );
   mods.forEach((m, i) =>
@@ -254,7 +295,7 @@ export function DiagramView({
               ? () => {
                   setSlotName("");
                   setLinkTarget("");
-                  setCouple({ source: n.data.role ?? "" });
+                  setCouple({ source: n.data.role ?? "", mode: "any" });
                 }
               : undefined,
             onDelete: canAct
@@ -271,10 +312,20 @@ export function DiagramView({
   );
 
   // The coupling dialog: if `target` is given (handle drag) the peer is
-  // fixed; otherwise the user picks it (link button).
-  const [couple, setCouple] = useState<{ source: string; target?: string } | null>(
-    null,
-  );
+  // fixed; otherwise the user picks it (link button). `mode` records the
+  // relation kind implied by how the dialog was opened: flow drags (side
+  // handles) never offer the parasite slot, vertical drags (top/bottom
+  // handles) only offer it; the link button offers everything.
+  const [couple, setCouple] = useState<
+    | {
+        source: string;
+        target?: string;
+        mode: "flow" | "parasite" | "any";
+        /** vertical attachment points drawn by the user (drags only) */
+        ends?: EdgeEnds;
+      }
+    | null
+  >(null);
   const [linkTarget, setLinkTarget] = useState("");
   const [slotName, setSlotName] = useState("");
   const [newRole, setNewRole] = useState("");
@@ -310,16 +361,44 @@ export function DiagramView({
     <span className="hint">no other module to couple to</span>
   );
 
-  // A handle drag ends at the DOWNSTREAM node's target (left) handle:
-  // that node is the coupling declarer, the drag source the provider.
-  // (React Flow reports connection.source = source-handle node, so the
-  // declarer is c.target — both drag directions yield the same coupling.)
-  const onConnect = useCallback((c: Connection) => {
-    if (!c.source || !c.target) return;
-    setSlotName("");
-    setLinkTarget("");
-    setCouple({ source: stripModule(c.target), target: stripModule(c.source) });
-  }, []);
+  // Side-handle drags are EXECUTION-ORDER FLOW: the drag ends at the
+  // DOWNSTREAM node's target (left) handle, that node is the coupling
+  // declarer, the drag source the provider (both directions agree).
+  // Vertical-handle drags are PARASITE attachments: every vertical
+  // position carries overlapping source+target handles, so ANY vertical
+  // drag completes; the declarer is whichever side is a chemistry-type
+  // module (the only parasite declarer the container supports), not the
+  // drag geometry.
+  const isVerticalHandle = (h?: string | null) =>
+    !!h && (h.startsWith("top") || h.startsWith("bot"));
+  const posOf = (h?: string | null): "top" | "bot" =>
+    h?.startsWith("top") ? "top" : "bot";
+  const onConnect = useCallback(
+    (c: Connection) => {
+      if (!c.source || !c.target) return;
+      setSlotName("");
+      setLinkTarget("");
+      const a = stripModule(c.target);
+      const b = stripModule(c.source);
+      if (isVerticalHandle(c.sourceHandle) || isVerticalHandle(c.targetHandle)) {
+        const aType = moduleType(spec, a);
+        const bType = moduleType(spec, b);
+        const decl = aType === "chemistry" ? a : bType === "chemistry" ? b : a;
+        const host = decl === a ? b : a;
+        // honor the exact vertical points the user dragged: the
+        // rendered edge attaches at these positions (host = source
+        // side, declarer = target side)
+        const ends = {
+          src: host === b ? posOf(c.sourceHandle) : posOf(c.targetHandle),
+          tgt: decl === b ? posOf(c.sourceHandle) : posOf(c.targetHandle),
+        };
+        setCouple({ source: decl, target: host, mode: "parasite", ends });
+      } else {
+        setCouple({ source: a, target: b, mode: "flow" });
+      }
+    },
+    [spec],
+  );
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setPos((p) => {
@@ -368,8 +447,25 @@ export function DiagramView({
     });
   }, []);
 
-  const commitCouple = (fromRole: string, key: string, toRole: string) => {
-    ops.onAddCoupling(fromRole, key, toRole);
+  const commitCouple = (
+    fromRole: string,
+    key: string,
+    toRole: string,
+    ends?: EdgeEnds,
+  ) => {
+    ops.onAddCoupling(fromRole, key, toRole, ends);
+    setCouple(null);
+    setSlotName("");
+    setLinkTarget("");
+  };
+  const commitOrder = (role: string, afterRole: string) => {
+    ops.onOrderAfter(role, afterRole);
+    setCouple(null);
+    setSlotName("");
+    setLinkTarget("");
+  };
+  const commitChain = (chem: string, host: string, after: string) => {
+    ops.onChainModule(chem, host, after);
     setCouple(null);
     setSlotName("");
     setLinkTarget("");
@@ -378,10 +474,71 @@ export function DiagramView({
   // Semantic coupling choices: slots offered by the SOURCE module's type
   // (from the block library, mirroring the C++ container).  When the
   // source has no outbound slots the direction is reversed automatically.
+  // Flow drags never offer the "parasite" slot (that relation attaches on
+  // the vertical handles); parasite drags only offer it.
+  const mode = couple?.mode ?? "any";
   const srcType = couple ? moduleType(spec, couple.source) : "";
   const tgtType = couple ? moduleType(spec, target) : "";
-  const srcSlots = couple ? slotsOf(srcType) : [];
-  const tgtSlots = couple ? slotsOf(tgtType) : [];
+  const filterSlots = (ss: string[]) =>
+    mode === "flow"
+      ? ss.filter((s) => s !== "parasite")
+      : mode === "parasite"
+        ? ss.filter((s) => s === "parasite")
+        : ss;
+  const srcSlots = couple ? filterSlots(slotsOf(srcType)) : [];
+  const tgtSlots = couple ? filterSlots(slotsOf(tgtType)) : [];
+  // C++-mirrored target-type gates (slot_targets): a blocked combo
+  // would hard-throw in the container / at module init. Prefer the
+  // server's table; the local constant is the fallback.
+  const slotTargets = blocklib?.slot_targets ?? SLOT_TARGET_TYPES;
+  const srcBlocked = srcSlots
+    .map((s) => slotTargetProblem(srcType, s, tgtType, slotTargets))
+    .find((p) => p !== null) as string | null | undefined;
+  const tgtBlocked = tgtSlots
+    .map((s) => slotTargetProblem(tgtType, s, srcType, slotTargets))
+    .find((p) => p !== null) as string | null | undefined;
+  const blockReason = (srcBlocked ?? tgtBlocked) || null;
+  const parasiteFiltered =
+    mode === "flow" &&
+    (slotsOf(srcType).includes("parasite") ||
+      slotsOf(tgtType).includes("parasite"));
+  // A dragged pair containing a chemistry module but no viable direct
+  // slot (e.g. horizontal post -> chemistry) still has a legal wiring:
+  // chemistry parasitizes a multi-species host — discovered through
+  // the peer's own couplings (the module feeding it) — and takes its
+  // place in the chain via the module's `order`.
+  const chemRole = couple
+    ? srcType === "chemistry"
+      ? couple.source
+      : tgtType === "chemistry"
+        ? target
+        : null
+    : null;
+  const directOk =
+    srcSlots.some(
+      (s) => !slotTargetProblem(srcType, s, tgtType, slotTargets),
+    ) ||
+    tgtSlots.some((s) => !slotTargetProblem(tgtType, s, srcType, slotTargets));
+  const hosts =
+    chemRole != null && !directOk
+      ? parasiteHostCandidates(
+          spec,
+          chemRole,
+          chemRole === couple?.source ? target : (couple?.source ?? ""),
+        )
+      : [];
+  const curHost =
+    chemRole != null
+      ? String(spec.sections[couplingSection(chemRole)]?.parasite ?? "")
+      : "";
+  // the module whose processed output chemistry will read: the peer
+  // the user dragged from/to (post in the post -> chemistry drag)
+  const afterRole =
+    chemRole != null && couple
+      ? chemRole === couple.source
+        ? target
+        : couple.source
+      : "";
 
   const proposedRole = newRole.trim();
   const roleProblem = proposedRole
@@ -431,7 +588,7 @@ export function DiagramView({
         <span className={roleProblem ? "hint role-error" : "hint"}>
           {roleProblem
             ? `${proposedRole}: ${roleProblem} — pick a role name like '${suggest[newType] ?? newType}'`
-            : "edit opens inspector · link offers couplings · drag handles: left/right = flow, top/bottom = parasite · double-click to inspect"}
+            : "edit opens inspector · link offers couplings · drag handles: left/right = flow, top/bottom = parasite (chemistry ⇢ chem_hydro/chem_mhd) · double-click any node (incl. global boxes) to inspect"}
         </span>
       </div>
 
@@ -462,13 +619,28 @@ export function DiagramView({
         }
         onEdgesDelete={(es) =>
           es.forEach((e) => {
+            // synthesized execution-chain edges are derived (parasite
+            // binding + orders), not stored couplings — not deletable
+            if (e.id.startsWith("chain:")) return;
             const ge = graph.edges.find((g) => g.id === e.id);
-            if (ge) ops.onRemoveCoupling(ge.fromRole, ge.key, ge.toRole);
+            if (!ge) return;
+            if (ge.key === "ord") {
+              ops.onRemoveOrderEdge(ge.fromRole, ge.toRole);
+              return;
+            }
+            ops.onRemoveCoupling(ge.fromRole, ge.key, ge.toRole);
           })
         }
         onNodeDoubleClick={(_, n) => {
           const g = graph.nodes.find((x) => x.id === n.id);
-          if (g && !g.missing && g.kind === "module") ops.onInspectRole(g.role);
+          if (g?.missing) return;
+          if (g) {
+            if (g.kind === "module") ops.onInspectRole(g.role);
+            else ops.onInspectCore(g.section);
+          } else if (n.id.startsWith("core:")) {
+            // an "unset" global box (section absent from the spec)
+            ops.onInspectCore(n.id.slice("core:".length));
+          }
         }}
         deleteKeyCode={["Delete", "Backspace"]}
         fitView
@@ -481,50 +653,112 @@ export function DiagramView({
       {couple && (
         <div className="coupling-dialog">
           <div>
-            couple{" "}
-            {srcSlots.length ? (
+            {mode === "parasite" ? (
+              // parasite: host holds the data, declarer attaches to it
+              <>
+                attach (parasite) {peerPick} ⇢{" "}
+                <b>{couple.source || "module"}</b>
+              </>
+            ) : srcSlots.length ? (
               // data flow: provider -> declarer
               <>
-                {peerPick} → <b>{couple.source || "module"}</b>
+                couple {peerPick} → <b>{couple.source || "module"}</b>
               </>
             ) : (
               // declarer has no slots: peer declares, data flows this way
               <>
-                <b>{couple.source || "module"}</b> → {peerPick}
+                couple <b>{couple.source || "module"}</b> → {peerPick}
               </>
             )}
           </div>
           {srcSlots.length > 0 ? (
-            srcSlots.map((s) => (
-              <button
-                key={s}
-                disabled={!target}
-                title={`[${couplingSection(couple.source)}] ${s} = ${target || "?"}`}
-                onClick={() => commitCouple(couple.source, s, target)}
-              >
-                + {couple.source || "module"}.{s}
-              </button>
-            ))
+            srcSlots.map((s) => {
+              const p = slotTargetProblem(srcType, s, tgtType, slotTargets);
+              return (
+                <button
+                  key={s}
+                  disabled={!target || !!p}
+                  title={
+                    p ??
+                    `[${couplingSection(couple.source)}] ${s} = ${target || "?"}`
+                  }
+                  onClick={() =>
+                    commitCouple(couple.source, s, target, couple.ends)
+                  }
+                >
+                  + {couple.source || "module"}.{s}
+                </button>
+              );
+            })
           ) : tgtSlots.length > 0 && target ? (
             <>
               <span className="hint">
                 {srcType || "?"} has no outbound slots — couple as:
               </span>
-              {tgtSlots.map((s) => (
-                <button
-                  key={s}
-                  title={`[${couplingSection(target)}] ${s} = ${couple.source || "?"}`}
-                  onClick={() => commitCouple(target, s, couple.source)}
-                >
-                  + {target}.{s}
-                </button>
-              ))}
+              {tgtSlots.map((s) => {
+                const p = slotTargetProblem(tgtType, s, srcType, slotTargets);
+                return (
+                  <button
+                    key={s}
+                    disabled={!!p}
+                    title={
+                      p ??
+                      `[${couplingSection(target)}] ${s} = ${couple.source || "?"}`
+                    }
+                    onClick={() => commitCouple(target, s, couple.source)}
+                  >
+                    + {target}.{s}
+                  </button>
+                );
+              })}
             </>
           ) : (
             <span className="hint">
-              neither type ({srcType || "?"} / {tgtType || "?"}) declares
-              couplings
+              {parasiteFiltered
+                ? "parasite-type couplings attach on the VERTICAL (top/bottom) handles — chemistry binds to its host (chem_hydro/chem_mhd) there"
+                : `no coupling slots between ${srcType || "?"} and ${tgtType || "?"} — sequence them by execution order instead`}
             </span>
+          )}
+          {mode !== "parasite" && target && target !== couple.source && (
+            <button
+              title={`execution ordering (modules share the proxy field state):\n[module.${couple.source}] order > [module.${target}] order`}
+              onClick={() => commitOrder(couple.source, target)}
+            >
+              + {couple.source || "module"} after {target}
+            </button>
+          )}
+          {chemRole != null && !directOk && (
+            <>
+              <span className="hint">
+                chemistry reads the full field state at its order — it
+                runs AFTER {afterRole || "its processors"} and receives
+                their output. Wire it: parasite onto the host feeding{" "}
+                {afterRole || "?"}, order past it:
+              </span>
+              {hosts.length > 0 ? (
+                hosts.map((h) => (
+                  <button
+                    key={h}
+                    title={`[coupling.${chemRole}] parasite = ${h}\n[module.${chemRole}] order > ${afterRole}'s order`}
+                    onClick={() => {
+                      if (chemRole)
+                        commitChain(chemRole, h, afterRole || h);
+                    }}
+                  >
+                    + {chemRole} after {afterRole || "?"} (host {h})
+                    {h === curHost ? " (current)" : ""}
+                  </button>
+                ))
+              ) : (
+                <span className="hint">
+                  no chem_hydro/chem_mhd module in this project — add one
+                  first, then attach chemistry (vertical handles)
+                </span>
+              )}
+            </>
+          )}
+          {blockReason && (
+            <div className="hint role-error">{blockReason}</div>
           )}
           {(srcSlots.length === 0 || !srcType) && target && (
             <input
@@ -536,7 +770,21 @@ export function DiagramView({
           )}
           {(slotName.trim() && target && srcSlots.length > 0) ||
           (slotName.trim() && target && !srcType) ? (
-            <button onClick={() => commitCouple(couple.source, slotName.trim(), target)}>
+            <button
+              disabled={
+                slotName.trim() === "parasite" && mode !== "any"
+                  ? true
+                  : !!slotTargetProblem(
+                      srcType,
+                      slotName.trim(),
+                      tgtType,
+                      slotTargets,
+                    )
+              }
+              onClick={() =>
+                commitCouple(couple.source, slotName.trim(), target)
+              }
+            >
               + custom
             </button>
           ) : null}

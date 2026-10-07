@@ -35,6 +35,14 @@ SPEC_VERSION = 1
 # regulations §2.1: the four core super-parameter sections.
 CORE_SECTIONS = frozenset({"device", "unit", "mesh", "cycle"})
 
+# Global sections every project carries (added by from_par when absent;
+# identity unit keeps bare-key pars in code units, empty [device] keeps
+# the engine defaults). Never written when the par already has them.
+GLOBAL_SECTION_DEFAULTS: dict = {
+    "unit": {"length": 1, "time": 1, "density": 1},
+    "device": {},
+}
+
 
 @dataclass
 class Issue:
@@ -67,6 +75,12 @@ class Spec:
                 else:
                     out[key] = infer_value(raw)
             sections[name] = out
+        # Every project carries the global sections: [unit] with the
+        # identity unit (= code units, so _cgs keys divide by 1) and
+        # [device] empty (engine defaults: idx_device auto, seed_rng 7).
+        # Added only when absent; existing values are never touched.
+        for name, default in GLOBAL_SECTION_DEFAULTS.items():
+            sections.setdefault(name, dict(default))
         return cls(sections=sections)
 
     # ------------------------------------------------------------------

@@ -96,3 +96,20 @@ def test_coerce_fvec3_length():
 def test_coerce_any_passthrough():
     assert coerce_value("any", "mp") == "mp"
     assert coerce_value("any", 1.67e-24) == 1.67e-24
+
+
+def test_from_par_forces_global_sections():
+    from kratos_spec.parfile import parse_par
+    from kratos_spec.spec import Spec
+    # a par with neither [unit] nor [device]
+    spec = Spec.from_par_text("[mesh]\nn_cell_global = 8 8 1\n")
+    assert spec.sections["unit"] == {"length": 1, "time": 1, "density": 1}
+    assert spec.sections["device"] == {}
+    # explicit values are never overwritten
+    spec = Spec.from_par_text("[unit]\nlength = 10\n[device]\nidx_device = 1\n")
+    assert spec.sections["unit"] == {"length": 10}
+    assert spec.sections["device"] == {"idx_device": 1}
+    # idempotent: emit -> parse gives the same sections
+    text = spec.to_par_text()
+    assert Spec.from_par_text(text).sections == spec.sections
+    assert "parse_par"  # keep import referenced

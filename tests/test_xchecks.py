@@ -224,6 +224,119 @@ def test_coupling_valid_clean():
     assert msgs == []
 
 
+def test_chem_parasite_plain_hydro_error():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "hydro", "order": 0},
+        "module.chem": {"type": "chemistry", "order": 1},
+        "coupling.chem": {"parasite": "flow"},
+    }))
+    assert any(
+        l == "error" and "no multi-species handling" in m
+        and "chemistry must parasite onto chem_hydro or chem_mhd" in m
+        for l, w, m in msgs
+    )
+
+
+def test_chem_parasite_plain_mhd_error():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "mhd", "order": 0},
+        "module.chem": {"type": "chemistry", "order": 1},
+        "coupling.chem": {"parasite": "flow"},
+    }))
+    assert any(l == "error" and "no multi-species handling" in m
+               for l, w, m in msgs)
+
+
+def test_chem_parasite_post_error():
+    # the exact wrong edge the user hit: chemistry bound to a post module
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "chem_hydro", "order": 0},
+        "module.sg": {"type": "post", "order": 1},
+        "module.chem": {"type": "chemistry", "order": 2},
+        "coupling.chem": {"parasite": "sg"},
+    }))
+    assert any(l == "error" and "no multi-species handling" in m
+               for l, w, m in msgs)
+
+
+def test_chem_parasite_chem_hydro_clean():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "chem_hydro", "order": 0},
+        "module.chem": {"type": "chemistry", "order": 1},
+        "coupling.chem": {"parasite": "flow"},
+    }))
+    assert not any("multi-species" in m for l, w, m in msgs)
+
+
+def test_chem_parasite_chem_mhd_clean():
+    # chem_mhd is not an enrolled universal type yet, but the target-type
+    # gate already accepts it (forward-compatible with the trunk module)
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "chem_mhd", "order": 0},
+        "module.chem": {"type": "chemistry", "order": 1},
+        "coupling.chem": {"parasite": "flow"},
+    }))
+    assert not any("multi-species" in m for l, w, m in msgs)
+
+
+def test_post_dyn_chemistry_error():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "hydro", "order": 0},
+        "module.chem": {"type": "chemistry", "order": 1},
+        "module.sg": {"type": "post", "order": 2},
+        "coupling.sg": {"dyn": "chem"},
+    }))
+    assert any(
+        l == "error" and "not a dynamics module" in m
+        and "'dyn' missing" in m
+        for l, w, m in msgs
+    )
+
+
+# ---------------------------------------------------------------------------
+# _check_chem_chain: chemistry ordering within its host's family
+# ---------------------------------------------------------------------------
+
+def test_chem_runs_before_post_warns():
+    # chemistry BEFORE the post module that processes its host's fields:
+    # it would read pre-post data each cycle
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "chem_hydro", "order": 0},
+        "module.sg": {"type": "post", "order": 2},
+        "module.chem": {"type": "chemistry", "order": 1},
+        "coupling.sg": {"dyn": "flow"},
+        "coupling.chem": {"parasite": "flow"},
+    }))
+    assert any(
+        l == "warning" and "before 'sg'" in m and "pre-'sg' data" in m
+        for l, w, m in msgs
+    )
+
+
+def test_chem_after_post_clean():
+    # the canonical chain: hydro -> post -> chemistry
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "chem_hydro", "order": 0},
+        "module.sg": {"type": "post", "order": 1},
+        "module.chem": {"type": "chemistry", "order": 2},
+        "coupling.sg": {"dyn": "flow"},
+        "coupling.chem": {"parasite": "flow"},
+    }))
+    assert not any("pre-'" in m for l, w, m in msgs)
+
+
+def test_chem_before_own_host_warns():
+    msgs = _msgs(_spec_with({
+        "module.flow": {"type": "chem_hydro", "order": 1},
+        "module.chem": {"type": "chemistry", "order": 0},
+        "coupling.chem": {"parasite": "flow"},
+    }))
+    assert any(
+        l == "warning" and "before 'flow'" in m
+        for l, w, m in msgs
+    )
+
+
 def test_role_with_dot_error():
     msgs = _msgs(_spec_with({
         "module.a.b": {"type": "hydro"},
@@ -387,3 +500,95 @@ def test_cgs_scales_values():
     assert sc["vel"] == pytest.approx(1e8)
     assert sc["edot"] == pytest.approx(1e6, rel=1e-15)
     assert abs(sc["b"] / 3.5449077018110314e-4 - 1) < 1e-12
+
+
+def test_cgs_identity_unit_warns():
+    # forced identity [unit] + _cgs keys -> "divided by 1" warning
+    msgs = _msgs(_spec_with({
+        "init": {"rho0_cgs": "1.0e-24"},
+        "unit": {"length": 1, "time": 1, "density": 1},
+    }))
+    assert any("identity" in m[2] and "divided by 1" in m[2]
+               for m in msgs if m[0] == "warning")
+    # a real unit silences it
+    msgs = _msgs(_spec_with({
+        "init": {"rho0_cgs": "1.0e-24"},
+        "unit": UNIT,
+    }))
+    assert not [m for m in msgs if "identity" in m[2]]
+
+
+# ---------------------------------------------------------------------------
+# chemistry module contract (q_che unbound / svd.h marginal cases)
+# ---------------------------------------------------------------------------
+
+def test_chem_hydro_without_chemistry_parasite():
+    # ttt.par marginal case: kratos throws 'q_che unbound: hydro'
+    msgs = _msgs(_spec_with({
+        "module.h": {"type": "chem_hydro"},
+        "module.t": {"type": "post"},
+        "coupling.t": {"dyn": "h"},
+    }))
+    assert any(l == "error" and "q_che unbound" in m and "'h'" in m
+               for l, w, m in msgs)
+    assert all("svd" not in m for _, _, m in msgs)
+
+
+def test_chem_hydro_with_chemistry_parasite_clean():
+    msgs = _msgs(_spec_with({
+        "module.h": {"type": "chem_hydro"},
+        "module.t": {"type": "post"},
+        "module.c": {"type": "chemistry", "order": 3},
+        "coupling.t": {"dyn": "h"},
+        "coupling.c": {"parasite": "h"},
+        "c.chemistry": {"species": ["H2", "H"]},
+    }))
+    assert msgs == []
+
+
+def test_chemistry_without_species():
+    # zero species -> svd.h throw in the corrector's stoichiometry SVD
+    msgs = _msgs(_spec_with({
+        "module.h": {"type": "chem_hydro"},
+        "module.c": {"type": "chemistry", "order": 3},
+        "coupling.t": {"dyn": "h"},
+        "module.t": {"type": "post"},
+        "coupling.c": {"parasite": "h"},
+    }))
+    assert any(l == "error" and "svd.h" in m and "'c'" in m
+               for l, w, m in msgs)
+
+
+def test_chemistry_empty_species_list():
+    msgs = _msgs(_spec_with({
+        "module.h": {"type": "chem_hydro"},
+        "module.c": {"type": "chemistry", "order": 3},
+        "module.t": {"type": "post"},
+        "coupling.t": {"dyn": "h"},
+        "coupling.c": {"parasite": "h"},
+        "c.chemistry": {"species": []},
+    }))
+    assert any(l == "error" and "svd.h" in m for l, w, m in msgs)
+
+
+def test_chemistry_global_species_fallback_clean():
+    # global [chemistry] species serves any scoped chemistry module
+    msgs = _msgs(_spec_with({
+        "module.h": {"type": "chem_hydro"},
+        "module.c": {"type": "chemistry", "order": 3},
+        "module.t": {"type": "post"},
+        "coupling.t": {"dyn": "h"},
+        "coupling.c": {"parasite": "h"},
+        "chemistry": {"species": "H He"},
+    }))
+    assert msgs == []
+
+
+def test_plain_hydro_post_clean():
+    # the working marginal config: no chemistry anywhere
+    msgs = _msgs(_spec_with({
+        "module.h": {"type": "hydro"},
+        "module.t": {"type": "post"},
+        "coupling.t": {"dyn": "h"},
+    }))
+    assert msgs == []
